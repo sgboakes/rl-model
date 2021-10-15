@@ -67,9 +67,13 @@ class satEnv(py_environment.PyEnvironment):
         self._action_spec = array_spec.BoundedArraySpec(
             shape=(), dtype=np.int32, minimum=0, maximum=10, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
-            shape=(1,), dtype=np.int32, minimum=0, name='observation')
+            shape=(10,), dtype=np.int32, minimum=0, name='observation')
         self._state = 0
         self._episode_ended = False
+        self._episode_duration = 0
+        import pdb; pdb.set_trace() # debugging
+        self._max_episode_length = 20
+        
         
     def action_spec(self):
         return self._action_spec
@@ -79,28 +83,32 @@ class satEnv(py_environment.PyEnvironment):
         
     def _reset(self):
         self._state = 0
+        # Initialise satellite to go 1 through 10 or backwards
         self._episode_ended = False
         return ts.restart(np.array([self._state], dtype=np.int32))
     
     def _step(self, action): #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ FIX
+    
+        self._episode_duration += 1
+        
         if self._episode_ended:
             # The last action ended the episode. Ignore the current action and start
             # a new episode.
             return self.reset()
         
         # Make sure episodes don't go on forever.
-        if action == 1:
-            self._episode_ended = True
-        elif action == 0:
-            new_card = np.random.randint(1, 11)
-            self._state += new_card
+        if action == self._state:
+            reward = 1
         else:
-            raise ValueError('`action` should be 0 or 1.')
+            reward = 0
         
-        if self._episode_ended or self._state >= 21:
-            reward = self._state - 21 if self._state <= 21 else -21
-            return ts.termination(np.array([self._state], dtype=np.int32), reward)
-        else:
-            return ts.transition(
-                np.array([self._state], dtype=np.int32), reward=0.0, discount=1.0)
+        self._state = (self._state + 1) % 10 
+        
+        state = [0]*10
+        state[self._state] = 1
+        if self._episode_duration >= self._max_episode_length:
+            return ts.termination(np.array([state], dtype=np.int32), reward)
+        
+        return ts.transition(
+            np.array([self._state], dtype=np.int32), reward=0.0, discount=1.0)
     
