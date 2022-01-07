@@ -1,13 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
 import base64
-import imageio
 import IPython
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import PIL.Image
-import pyvirtualdisplay
+#import PIL.Image
+#import pyvirtualdisplay
 import reverb
 
 import tensorflow as tf
@@ -26,11 +25,6 @@ from tf_agents.replay_buffers import reverb_utils
 from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
-
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import tensorflow as tf
@@ -344,8 +338,8 @@ for _ in range(num_iterations):
 
     step = agent.train_step_counter.numpy()
 
-    if step % log_interval == 0:
-        print('step = {0}: loss = {1}'.format(step, train_loss))
+    # if step % log_interval == 0:
+    #     print('step = {0}: loss = {1}'.format(step, train_loss))
 
     if step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
