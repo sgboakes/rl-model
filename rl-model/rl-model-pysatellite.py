@@ -5,8 +5,46 @@ Created on Thu Jan  20 13:29:40 2022
 @author: sgboakes
 """
 
+from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import abc
+import tensorflow as tf
 import numpy as np
+from numpy import int32, float32
+
+from tf_agents.environments import py_environment
+from tf_agents.environments import tf_environment
+from tf_agents.environments import tf_py_environment
+from tf_agents.environments import utils
+from tf_agents.specs import array_spec
+from tf_agents.environments import wrappers
+from tf_agents.environments import suite_gym
+from tf_agents.trajectories import time_step as ts
+import base64
+# import imageio
+import IPython
+import matplotlib
 import matplotlib.pyplot as plt
+# import PIL.Image
+# import pyvirtualdisplay
+import reverb
+from tf_agents.agents.dqn import dqn_agent
+from tf_agents.drivers import py_driver
+from tf_agents.environments import suite_gym
+from tf_agents.environments import tf_py_environment
+from tf_agents.eval import metric_utils
+from tf_agents.metrics import tf_metrics
+from tf_agents.networks import sequential
+from tf_agents.policies import py_tf_eager_policy
+from tf_agents.policies import random_tf_policy
+from tf_agents.replay_buffers import reverb_replay_buffer
+from tf_agents.replay_buffers import reverb_utils
+from tf_agents.trajectories import trajectory
+from tf_agents.specs import tensor_spec
+from tf_agents.utils import common
 from pysatellite import Transformations, Functions, Filters
 import pysatellite.config as cfg
 
@@ -134,12 +172,10 @@ if __name__ == "__main__":
     covAER = np.array([[(angMeasDev * 180 / pi) ** 2, 0, 0],
                        [0, (angMeasDev * 180 / pi) ** 2, 0],
                        [0, 0, rangeMeasDev ** 2]],
-                      dtype='float64'
-                      )
+                      dtype='float64')
 
     measureMatrix = np.append(np.identity(3), np.zeros((3, 3)), axis=1)
 
-    
     # ~~~~~~ CHECK
     totalStates = {chr(i + 97): np.zeros((6, simLength)) for i in range(num_sats)}
     diffState = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
@@ -189,39 +225,10 @@ if __name__ == "__main__":
             diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
             # print(satState[c])
 
-from __future__ import absolute_import, division, print_function
-
-import base64
-# import imageio
-import IPython
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
-# import PIL.Image
-# import pyvirtualdisplay
-import reverb
-
-import tensorflow as tf
-
-from tf_agents.agents.dqn import dqn_agent
-from tf_agents.drivers import py_driver
-from tf_agents.environments import suite_gym
-from tf_agents.environments import tf_py_environment
-from tf_agents.eval import metric_utils
-from tf_agents.metrics import tf_metrics
-from tf_agents.networks import sequential
-from tf_agents.policies import py_tf_eager_policy
-from tf_agents.policies import random_tf_policy
-from tf_agents.replay_buffers import reverb_replay_buffer
-from tf_agents.replay_buffers import reverb_utils
-from tf_agents.trajectories import trajectory
-from tf_agents.specs import tensor_spec
-from tf_agents.utils import common
-
-num_iterations = 20000 # @param {type:"integer"}
+num_iterations = 50000  # @param {type:"integer"}
 
 initial_collect_steps = 100  # @param {type:"integer"}
-collect_steps_per_iteration =   1# @param {type:"integer"}
+collect_steps_per_iteration = 1  # @param {type:"integer"}
 replay_buffer_max_length = 100000  # @param {type:"integer"}
 
 batch_size = 64  # @param {type:"integer"}
@@ -230,25 +237,6 @@ log_interval = 200  # @param {type:"integer"}
 
 num_eval_episodes = 10  # @param {type:"integer"}
 eval_interval = 1000  # @param {type:"integer"}
-
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import abc
-import tensorflow as tf
-import numpy as np
-from numpy import int32, float32
-
-from tf_agents.environments import py_environment
-from tf_agents.environments import tf_environment
-from tf_agents.environments import tf_py_environment
-from tf_agents.environments import utils
-from tf_agents.specs import array_spec
-from tf_agents.environments import wrappers
-from tf_agents.environments import suite_gym
-from tf_agents.trajectories import time_step as ts
 
 
 class PyEnvironment(object):
@@ -311,7 +299,7 @@ class SatEnv(py_environment.PyEnvironment):
         # self._state = 0
         self._episode_ended = False
         self._episode_duration = 0
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         return ts.restart(np.array([0.,0.,0.,0.], dtype=np.float32))
 
     def _step(self, action):
@@ -322,8 +310,6 @@ class SatEnv(py_environment.PyEnvironment):
             # a new episode.
             return self.reset()
 
-        
-        
 #         print('simlength {s} current ep {e}'.format(s=simLength,e=self._episode_duration))
         # Radial error
         error = [None] * num_sats
@@ -332,11 +318,21 @@ class SatEnv(py_environment.PyEnvironment):
             error[i] = np.sqrt(err_X_ECI[c][self._episode_duration]**2 +
                              err_Y_ECI[c][self._episode_duration]**2 +
                              err_Z_ECI[c][self._episode_duration]**2)
-            
 
         # Make sure episodes don't go on forever.
+        # if action == error.index(max(error)):
+        #     reward = 1
+
+        # Using all actions
+        sorted_error = sorted(error)
         if action == error.index(max(error)):
+            reward = 2
+        elif action == error.index(sorted_error[1]):
             reward = 1
+        elif action == error.index(sorted_error[2]):
+            reward = -1
+        elif action == error.index(min(error)):
+            reward = -2
 
         self._state = (self._state + 1) % self._num_look_spots
         # self._state = dif
@@ -349,7 +345,7 @@ class SatEnv(py_environment.PyEnvironment):
 
         if self._episode_duration >= self._max_episode_length:
             print('here')
-            #import pdb; pdb.set_trace() # ALWAYS ON SAME LINE
+            # import pdb; pdb.set_trace() # ALWAYS ON SAME LINE
             self._episode_ended = True
             return ts.termination(error, reward)
         else:
@@ -399,16 +395,20 @@ num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 # Define a helper function to create Dense layers configured with the right
 # activation and kernel initializer.
+
+
 def dense_layer(num_units):
-  return tf.keras.layers.Dense(
-      num_units,
-      activation=tf.keras.activations.relu,
-      kernel_initializer=tf.keras.initializers.VarianceScaling(
-          scale=2.0, mode='fan_in', distribution='truncated_normal'))
+    return tf.keras.layers.Dense(
+        num_units,
+        activation=tf.keras.activations.relu,
+        kernel_initializer=tf.keras.initializers.VarianceScaling(
+                            scale=2.0, mode='fan_in', distribution='truncated_normal'))
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
 # its output.
+
+
 dense_layers = [dense_layer(num_units) for num_units in fc_layer_params]
 q_values_layer = tf.keras.layers.Dense(
     num_actions,
@@ -440,30 +440,29 @@ random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(),
                                                 train_env.action_spec())
 
 
-#@test {"skip": true}
+# @test {"skip": true}
 def compute_avg_return(environment, policy, num_episodes=10):
 
-  total_return = 0.0
-  for _ in range(num_episodes):
+    total_return = 0.0
+    for _ in range(num_episodes):
 
-    time_step = environment.reset()
-    episode_return = 0.0
+        time_step = environment.reset()
+        episode_return = 0.0
 
     while not time_step.is_last():
-      action_step = policy.action(time_step)
-      time_step = environment.step(action_step.action)
-      episode_return += time_step.reward
+        action_step = policy.action(time_step)
+        time_step = environment.step(action_step.action)
+        episode_return += time_step.reward
     total_return += episode_return
 
-  avg_return = total_return / num_episodes
-  return avg_return.numpy()[0]
+    avg_return = total_return / num_episodes
+    return avg_return.numpy()[0]
 
 
 # See also the metrics module for standard implementations of different metrics.
 # https://github.com/tensorflow/agents/tree/master/tf_agents/metrics
 
 compute_avg_return(eval_env, random_policy, num_eval_episodes)
-
 
 table_name = 'uniform_table'
 replay_buffer_signature = tensor_spec.from_spec(
@@ -497,7 +496,7 @@ agent.collect_data_spec
 agent.collect_data_spec._fields
 
 
-#@test {"skip": true}
+# @test {"skip": true}
 py_driver.PyDriver(
     env,
     py_tf_eager_policy.PyTFEagerPolicy(
@@ -547,25 +546,25 @@ collect_driver = py_driver.PyDriver(
 
 for _ in range(num_iterations):
 
-  # Collect a few steps and save to the replay buffer.
-  time_step, _ = collect_driver.run(time_step)
+    # Collect a few steps and save to the replay buffer.
+    time_step, _ = collect_driver.run(time_step)
 
-  # Sample a batch of data from the buffer and update the agent's network.
-  experience, unused_info = next(iterator)
-  train_loss = agent.train(experience).loss
+    # Sample a batch of data from the buffer and update the agent's network.
+    experience, unused_info = next(iterator)
+    train_loss = agent.train(experience).loss
 
-  step = agent.train_step_counter.numpy()
+    step = agent.train_step_counter.numpy()
 
 #   if step % log_interval == 0:
 #     print('step = {0}: loss = {1}'.format(step, train_loss))
 
-  if step % eval_interval == 0:
-    avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-    print('step = {0}: Average Return = {1}'.format(step, avg_return))
-    returns.append(avg_return)
+    if step % eval_interval == 0:
+        avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+        print('step = {0}: Average Return = {1}'.format(step, avg_return))
+        returns.append(avg_return)
 
 
-#@test {"skip": true}
+# @test {"skip": true}
 
 iterations = range(0, num_iterations + 1, eval_interval)
 plt.plot(iterations, returns)
