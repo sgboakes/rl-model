@@ -66,6 +66,7 @@ if __name__ == "__main__":
     sensECEF.shape = (3, 1)
 
     simLength = cfg.simLength
+    simLength = 20
     stepLength = cfg.stepLength
 
     mu = cfg.mu
@@ -225,7 +226,7 @@ if __name__ == "__main__":
             diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
             # print(satState[c])
 
-num_iterations = 50000  # @param {type:"integer"}
+num_iterations = 20000  # @param {type:"integer"}
 
 initial_collect_steps = 100  # @param {type:"integer"}
 collect_steps_per_iteration = 1  # @param {type:"integer"}
@@ -320,19 +321,21 @@ class SatEnv(py_environment.PyEnvironment):
                              err_Z_ECI[c][self._episode_duration]**2)
 
         # Make sure episodes don't go on forever.
-        # if action == error.index(max(error)):
-        #     reward = 1
+        if action == error.index(max(error)):
+            reward = 1
+        elif action == error.index(min(error)):
+            reward = -1
 
         # Using all actions
-        sorted_error = sorted(error)
-        if action == error.index(max(error)):
-            reward = 2
-        elif action == error.index(sorted_error[1]):
-            reward = 1
-        elif action == error.index(sorted_error[2]):
-            reward = -1
-        elif action == error.index(min(error)):
-            reward = -2
+        # sorted_error = sorted(error)
+        # if action == error.index(max(error)):
+        #     reward = 2
+        # elif action == error.index(sorted_error[1]):
+        #     reward = 1
+        # elif action == error.index(sorted_error[2]):
+        #     reward = -1
+        # elif action == error.index(min(error)):
+        #     reward = -2
 
         self._state = (self._state + 1) % self._num_look_spots
         # self._state = dif
