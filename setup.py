@@ -5,5 +5,13 @@ Setup script for pysatellite using PBR package.
 
 from setuptools import setup
 
-#setup(setup_requires=["pbr"],pbr=True)
-setup(pbr=True)
+# setup(setup_requires=["pbr"],pbr=True)
+setup(name='rl-model',
+      maintainer='Bendict Oakes',
+      maintainer_email='sgboakes@liverpool.ac.uk',
+      url='https://github.com/sgboakes/rl-model',
+      install_requires=[
+          'numpy', 'tf-agents[reverb]', 'pysatellite', 'matplotlib', 'tensorflow'
+      ],
+      pbr=True,
+      )
