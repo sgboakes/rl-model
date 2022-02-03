@@ -292,6 +292,7 @@ class SatEnv(py_environment.PyEnvironment):
         self._episode_ended = False
         self._current_episode = 0
         self._max_episode_length = simLength
+        self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
 
     def action_spec(self):
         return self._action_spec
@@ -303,6 +304,7 @@ class SatEnv(py_environment.PyEnvironment):
         # self._state = 0
         self._episode_ended = False
         self._current_episode = 0
+        self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
         # import pdb; pdb.set_trace()
         return ts.restart(np.array([0., 0., 0., 0.], dtype=np.float32))
 
@@ -319,10 +321,6 @@ class SatEnv(py_environment.PyEnvironment):
         information gain (largest difference between prior and posterior), then gain reward. Information gain quantified
         in trace of covariance. 
         '''
-        covState = {chr(i + 97): np.zeros((6, 6)) for i in range(num_sats)}
-        for i in range(num_sats):
-            c = chr(i + 97)
-            covState[c] = np.float64(1e10) * np.identity(6)
 
         info_gain = [0.] * num_sats
         j = self._current_episode
@@ -331,7 +329,7 @@ class SatEnv(py_environment.PyEnvironment):
         for i in range(num_sats):
             c = chr(i + 97)
             # Get prior information
-            tr_prior[c] = np.trace(covState[c])
+            tr_prior[c] = np.trace(self._cov_state[c])
 
             if i != action:
                 satECIMes[c][:, j] = np.nan
@@ -350,11 +348,10 @@ class SatEnv(py_environment.PyEnvironment):
 
             stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
 
-            satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j],
-                                                       stateTransMatrix,
-                                                       measureMatrix, covECI, procNoise)
+            satState[c], self._cov_state[c] = Filters.EKF_ECI(satState[c], self._cov_state[c], satECIMes[c][:, j],
+                                                              stateTransMatrix, measureMatrix, covECI, procNoise)
 
-            tr_posterior[c] = np.trace(covState[c])
+            tr_posterior[c] = np.trace(self._cov_state[c])
             info_gain[i] = abs(tr_posterior[c] - tr_prior[c])
             info_gain[i] = np.sqrt(info_gain[i])
             if info_gain[i] < 0:
