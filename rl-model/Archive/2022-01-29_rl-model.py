@@ -184,51 +184,47 @@ if __name__ == "__main__":
     err_Y_ECI = {chr(i + 97): np.zeros(simLength) for i in range(num_sats)}
     err_Z_ECI = {chr(i + 97): np.zeros(simLength) for i in range(num_sats)}
 
-    tr_prior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
-    tr_posterior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
-    # info_gain = [0.] * num_sats
     # ~~~~~ Using EKF
 
     delta = 1e-6
-    # for i in range(num_sats):
-    #     c = chr(i + 97)
-    #     mesCheck = False
-    #     for j in range(simLength):
-    #         while not mesCheck:
-    #             if np.all(np.isnan(satECIMes[c][:, j])):
-    #                 break
-    #             else:
-    #                 mesCheck = True
-    #                 break
-    #
-    #         if not mesCheck:
-    #             continue
-    #
-    #         func_params = {
-    #             "stepLength": stepLength,
-    #             "count": j + 1,
-    #             "sensECEF": sensECEF,
-    #             "sensLLA[0]": sensLLA[0],
-    #             "sensLLA[1]": sensLLA[1]
-    #         }
-    #
-    #         jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)), func_params,
-    #                                              delta)
-    #
-    #         # covECI = np.matmul(np.matmul(jacobian, covAER), jacobian.T)
-    #         covECI = jacobian @ covAER @ jacobian.T
-    #
-    #         stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
-    #
-    #         satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
-    #                                                    measureMatrix, covECI, procNoise)
-    #
-    #         totalStates[c][:, j] = np.reshape(satState[c], 6)
-    #         err_X_ECI[c][j] = (np.sqrt(np.abs(covState[c][0, 0])))
-    #         err_Y_ECI[c][j] = (np.sqrt(np.abs(covState[c][1, 1])))
-    #         err_Z_ECI[c][j] = (np.sqrt(np.abs(covState[c][2, 2])))
-    #         diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
-    #         print(satState[c])
+    for i in range(num_sats):
+        c = chr(i + 97)
+        mesCheck = False
+        for j in range(simLength):
+            while not mesCheck:
+                if np.all(np.isnan(satECIMes[c][:, j])):
+                    break
+                else:
+                    mesCheck = True
+                    break
+
+            if not mesCheck:
+                continue
+
+            func_params = {
+                "stepLength": stepLength,
+                "count": j + 1,
+                "sensECEF": sensECEF,
+                "sensLLA[0]": sensLLA[0],
+                "sensLLA[1]": sensLLA[1]
+            }
+
+            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)), func_params, delta)
+
+            # covECI = np.matmul(np.matmul(jacobian, covAER), jacobian.T)
+            covECI = jacobian @ covAER @ jacobian.T
+
+            stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
+
+            satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
+                                                       measureMatrix, covECI, procNoise)
+
+            totalStates[c][:, j] = np.reshape(satState[c], 6)
+            err_X_ECI[c][j] = (np.sqrt(np.abs(covState[c][0, 0])))
+            err_Y_ECI[c][j] = (np.sqrt(np.abs(covState[c][1, 1])))
+            err_Z_ECI[c][j] = (np.sqrt(np.abs(covState[c][2, 2])))
+            diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
+            # print(satState[c])
 
 num_iterations = 20000  # @param {type:"integer"}
 
@@ -289,8 +285,9 @@ class SatEnv(py_environment.PyEnvironment):
             shape=(), dtype=np.int32, minimum=0, maximum=self._num_look_spots-1, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(4,), dtype=np.float32, minimum=0, name='observation')
+        # self._state = 0
         self._episode_ended = False
-        self._current_episode = 0
+        self._episode_duration = 0
         self._max_episode_length = simLength
 
     def action_spec(self):
@@ -302,9 +299,9 @@ class SatEnv(py_environment.PyEnvironment):
     def _reset(self):
         # self._state = 0
         self._episode_ended = False
-        self._current_episode = 0
+        self._episode_duration = 0
         # import pdb; pdb.set_trace()
-        return ts.restart(np.array([0., 0., 0., 0.], dtype=np.float32))
+        return ts.restart(np.array([0.,0.,0.,0.], dtype=np.float32))
 
     def _step(self, action):
 
@@ -314,74 +311,48 @@ class SatEnv(py_environment.PyEnvironment):
             # a new episode.
             return self.reset()
 
-        '''
-        Want to compare the prior covariance for each satellite to the posterior, and if action was the largest
-        information gain (largest difference between prior and posterior), then gain reward. Information gain quantified
-        in trace of covariance. 
-        '''
-        covState = {chr(i + 97): np.zeros((6, 6)) for i in range(num_sats)}
+#         print('simlength {s} current ep {e}'.format(s=simLength,e=self._episode_duration))
+        # Radial error
+        error = [None] * num_sats
         for i in range(num_sats):
             c = chr(i + 97)
-            covState[c] = np.float64(1e10) * np.identity(6)
+            error[i] = np.sqrt(err_X_ECI[c][self._episode_duration]**2 +
+                             err_Y_ECI[c][self._episode_duration]**2 +
+                             err_Z_ECI[c][self._episode_duration]**2)
 
-        info_gain = [0.] * num_sats
-        j = self._current_episode
-        # ~~~~~ Using EKF
-
-        for i in range(num_sats):
-            c = chr(i + 97)
-            # Get prior information
-            tr_prior[c] = np.trace(covState[c])
-
-            if i != action:
-                satECIMes[c][:, j] = np.nan
-
-            func_params = {
-                "stepLength": stepLength,
-                "count": j + 1,
-                "sensECEF": sensECEF,
-                "sensLLA[0]": sensLLA[0],
-                "sensLLA[1]": sensLLA[1]}
-
-            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)),
-                                                 func_params, delta)
-
-            covECI = jacobian @ covAER @ jacobian.T
-
-            stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
-
-            satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j],
-                                                       stateTransMatrix,
-                                                       measureMatrix, covECI, procNoise)
-
-            tr_posterior[c] = np.trace(covState[c])
-            info_gain[i] = abs(tr_posterior[c] - tr_prior[c])
-            info_gain[i] = np.sqrt(info_gain[i])
-            if info_gain[i] < 0:
-                info_gain[i] = 0
-            elif np.isnan(info_gain[i]):
-                info_gain[i] = 0
-
-        # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
-
-        # print(action)
-        # print(info_gain)
-        if action == info_gain.index(max(info_gain)):
+        # Make sure episodes don't go on forever.
+        if action == error.index(max(error)):
             reward = 1
-        elif action == info_gain.index(min(info_gain)):
+        elif action == error.index(min(error)):
             reward = -1
 
-        self._current_episode += 1
-        info_gain = np.array(info_gain, dtype=np.float32)
+        # Using all actions
+        # sorted_error = sorted(error)
+        # if action == error.index(max(error)):
+        #     reward = 2
+        # elif action == error.index(sorted_error[1]):
+        #     reward = 1
+        # elif action == error.index(sorted_error[2]):
+        #     reward = -1
+        # elif action == error.index(min(error)):
+        #     reward = -2
 
-        if self._current_episode >= self._max_episode_length:
-            # print('here')
+        # self._state = (self._state + 1) % self._num_look_spots
+        # self._state = dif
+        
+        # print(self._state)
+        # print("reward = ", reward)
+
+        self._episode_duration += 1
+        error = np.array(error, dtype=np.float32)
+
+        if self._episode_duration >= self._max_episode_length:
+            print('here')
             # import pdb; pdb.set_trace() # ALWAYS ON SAME LINE
             self._episode_ended = True
-            return ts.termination(info_gain, reward)
+            return ts.termination(error, reward)
         else:
-            # print('here1')
-            return ts.transition(info_gain, reward=reward, discount=1.0)
+            return ts.transition(error, reward=reward, discount=1.0)
 
 
 env = SatEnv()
@@ -524,8 +495,8 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
   sequence_length=2)
 
 
-# agent.collect_data_spec
-# agent.collect_data_spec._fields
+agent.collect_data_spec
+agent.collect_data_spec._fields
 
 
 # @test {"skip": true}
@@ -543,7 +514,11 @@ dataset = replay_buffer.as_dataset(
     sample_batch_size=batch_size,
     num_steps=2).prefetch(3)
 
+dataset
+
 iterator = iter(dataset)
+print(iterator)
+
 
 # #@test {"skip": true}
 # try:
@@ -573,13 +548,12 @@ collect_driver = py_driver.PyDriver(
     max_steps=collect_steps_per_iteration)
 
 for _ in range(num_iterations):
-    # print('Iteration: {i}'.format(i=_))
+
     # Collect a few steps and save to the replay buffer.
     time_step, _ = collect_driver.run(time_step)
 
     # Sample a batch of data from the buffer and update the agent's network.
     experience, unused_info = next(iterator)
-    # import pdb; pdb.set_trace()
     train_loss = agent.train(experience).loss
 
     step = agent.train_step_counter.numpy()
