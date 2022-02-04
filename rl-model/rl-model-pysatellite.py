@@ -81,19 +81,22 @@ if __name__ == "__main__":
     # thetaArr: inclination angle for each sat rad
     # kArr: normal vector for each sat metres
 
-    radArr = np.array([7e6, 7e6, 7e6, 7e6], dtype='float64')
-
+    num_sats = 4
+    radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
     omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-
     thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
-
     kArr = np.array([[0, 0, 0],
                      [0, 0, 1],
                      [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
                      [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
                     dtype='float64')
 
-    num_sats = len(radArr)
+    # num_sats = 10
+    # radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
+    # omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
+    # thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
+    # kArr = np.zeros((num_sats, 3), dtype='float64')
+    # kArr[:, 2] = 1.
 
     # Make data structures
     satECI = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
@@ -288,7 +291,7 @@ class SatEnv(py_environment.PyEnvironment):
         self._action_spec = array_spec.BoundedArraySpec(
             shape=(), dtype=np.int32, minimum=0, maximum=self._num_look_spots-1, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
-            shape=(4,), dtype=np.float32, minimum=0, name='observation')
+            shape=(num_sats,), dtype=np.float32, minimum=0, name='observation')
         self._episode_ended = False
         self._current_episode = 0
         self._max_episode_length = simLength
@@ -306,7 +309,7 @@ class SatEnv(py_environment.PyEnvironment):
         self._current_episode = 0
         self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
         # import pdb; pdb.set_trace()
-        return ts.restart(np.array([0., 0., 0., 0.], dtype=np.float32))
+        return ts.restart(np.zeros(num_sats, dtype=np.float32))
 
     def _step(self, action):
 
@@ -352,12 +355,11 @@ class SatEnv(py_environment.PyEnvironment):
                                                               stateTransMatrix, measureMatrix, covECI, procNoise)
 
             tr_posterior[c] = np.trace(self._cov_state[c])
-            info_gain[i] = abs(tr_posterior[c] - tr_prior[c])
-            info_gain[i] = np.sqrt(info_gain[i])
+            info_gain[i] = tr_posterior[c] - tr_prior[c]
             if info_gain[i] < 0:
                 info_gain[i] = 0
-            elif np.isnan(info_gain[i]):
-                info_gain[i] = 0
+            else:
+                info_gain[i] = np.sqrt(info_gain[i])
 
         # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
 
@@ -365,8 +367,8 @@ class SatEnv(py_environment.PyEnvironment):
         # print(info_gain)
         if action == info_gain.index(max(info_gain)):
             reward = 1
-        elif action == info_gain.index(min(info_gain)):
-            reward = -1
+        # elif action == info_gain.index(min(info_gain)):
+        #     reward = -1
 
         self._current_episode += 1
         info_gain = np.array(info_gain, dtype=np.float32)
