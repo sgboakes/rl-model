@@ -325,7 +325,13 @@ class SatEnv(py_environment.PyEnvironment):
         in trace of covariance. 
         '''
 
-        info_gain = [0.] * num_sats
+        info_gain = [0.] * num_sats  # Information gain
+        loc_error = [0.] * num_sats  # Localisation error
+        cutoff = 1000  # cutoff distance in metres
+        miss_t = 0  # Number of missed targets
+        false_t = 0  # Number of false targets
+        c_p = 1  #
+        p = 1  # order of metric?
         j = self._current_episode
         # ~~~~~ Using EKF
 
@@ -356,19 +362,39 @@ class SatEnv(py_environment.PyEnvironment):
 
             tr_posterior[c] = np.trace(self._cov_state[c])
             info_gain[i] = tr_posterior[c] - tr_prior[c]
+
+            # Implement GOSPA here
             if info_gain[i] < 0:
                 info_gain[i] = 0
             else:
                 info_gain[i] = np.sqrt(info_gain[i])
 
+        # Mahalanobis distance?
+
+            loc_error[i] = np.sqrt(abs(satState[c][0]**2-satECI[c][0, j]**2) + abs(satState[c][1]**2-satECI[c][1, j]**2)
+                                   + abs(satState[c][2]**2-satECI[c][2, j]**2))
+
+            if loc_error[i] > cutoff:
+                miss_t += 1
+                false_t += 1
+
+        gospa = np.min(np.sum(loc_error) + c_p/2 * (miss_t + false_t))**(1/p)
+
+        reward = -gospa
+
         # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
 
         # print(action)
         # print(info_gain)
-        if action == info_gain.index(max(info_gain)):
-            reward = 1
-        # elif action == info_gain.index(min(info_gain)):
-        #     reward = -1
+        # sorted_info = sorted(info_gain)
+        # if action == info_gain.index(sorted_info[0]):
+        #     reward = 4
+        # elif action == info_gain.index(sorted_info[1]):
+        #     reward = 3
+        # elif action == info_gain.index(sorted_info[2]):
+        #     reward = 2
+        # elif action == info_gain.index(sorted_info[3]):
+        #     reward = 1
 
         self._current_episode += 1
         info_gain = np.array(info_gain, dtype=np.float32)
@@ -583,8 +609,8 @@ for _ in range(num_iterations):
 
     step = agent.train_step_counter.numpy()
 
-#   if step % log_interval == 0:
-#     print('step = {0}: loss = {1}'.format(step, train_loss))
+    if step % log_interval == 0:
+        print('step = {0}: loss = {1}'.format(step, train_loss))
 
     if step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
