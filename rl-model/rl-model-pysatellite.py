@@ -11,6 +11,8 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+
+import pysatellite.Functions
 import tensorflow as tf
 import numpy as np
 from numpy import int32, float32
@@ -52,6 +54,20 @@ if __name__ == "__main__":
 
     plt.close('all')
     # ~~~~ Variables
+
+    # Hyper-parameters
+    num_iterations = 20000  # @param {type:"integer"}
+
+    initial_collect_steps = 100  # @param {type:"integer"}
+    collect_steps_per_iteration = 1  # @param {type:"integer"}
+    replay_buffer_max_length = 1000000  # @param {type:"integer"}
+
+    batch_size = 64  # @param {type:"integer"}
+    learning_rate = 1e-6  # @param {type:"number"}
+    log_interval = 200  # @param {type:"integer"}
+
+    num_eval_episodes = 10  # @param {type:"integer"}
+    eval_interval = 1000  # @param {type:"integer"}
 
     sin = np.sin
     cos = np.cos
@@ -233,19 +249,6 @@ if __name__ == "__main__":
     #         diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
     #         print(satState[c])
 
-num_iterations = 20000  # @param {type:"integer"}
-
-initial_collect_steps = 100  # @param {type:"integer"}
-collect_steps_per_iteration = 1  # @param {type:"integer"}
-replay_buffer_max_length = 100000  # @param {type:"integer"}
-
-batch_size = 64  # @param {type:"integer"}
-learning_rate = 1e-3  # @param {type:"number"}
-log_interval = 200  # @param {type:"integer"}
-
-num_eval_episodes = 10  # @param {type:"integer"}
-eval_interval = 1000  # @param {type:"integer"}
-
 
 class PyEnvironment(object):
 
@@ -326,15 +329,9 @@ class SatEnv(py_environment.PyEnvironment):
         '''
 
         info_gain = [0.] * num_sats  # Information gain
-        loc_error = [0.] * num_sats  # Localisation error
-        cutoff = 1000  # cutoff distance in metres
-        miss_t = 0  # Number of missed targets
-        false_t = 0  # Number of false targets
-        c_p = 1  #
-        p = 1  # order of metric?
         j = self._current_episode
-        # ~~~~~ Using EKF
 
+        # ~~~~~ Using EKF
         for i in range(num_sats):
             c = chr(i + 97)
             # Get prior information
@@ -369,32 +366,19 @@ class SatEnv(py_environment.PyEnvironment):
             else:
                 info_gain[i] = np.sqrt(info_gain[i])
 
-        # Mahalanobis distance?
-
-            loc_error[i] = np.sqrt(abs(satState[c][0]**2-satECI[c][0, j]**2) + abs(satState[c][1]**2-satECI[c][1, j]**2)
-                                   + abs(satState[c][2]**2-satECI[c][2, j]**2))
-
-            if loc_error[i] > cutoff:
-                miss_t += 1
-                false_t += 1
-
-        gospa = np.min(np.sum(loc_error) + c_p/2 * (miss_t + false_t))**(1/p)
-
-        reward = -gospa
-
         # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
 
         # print(action)
         # print(info_gain)
-        # sorted_info = sorted(info_gain)
-        # if action == info_gain.index(sorted_info[0]):
-        #     reward = 4
-        # elif action == info_gain.index(sorted_info[1]):
-        #     reward = 3
-        # elif action == info_gain.index(sorted_info[2]):
-        #     reward = 2
-        # elif action == info_gain.index(sorted_info[3]):
-        #     reward = 1
+        sorted_info = sorted(info_gain)
+        if action == info_gain.index(sorted_info[0]):
+            reward = 1
+        elif action == info_gain.index(sorted_info[1]):
+            reward = 0
+        elif action == info_gain.index(sorted_info[2]):
+            reward = 0
+        elif action == info_gain.index(sorted_info[3]):
+            reward = -1
 
         self._current_episode += 1
         info_gain = np.array(info_gain, dtype=np.float32)
