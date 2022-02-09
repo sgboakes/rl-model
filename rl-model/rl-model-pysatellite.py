@@ -25,9 +25,9 @@ from tf_agents.specs import array_spec
 from tf_agents.environments import wrappers
 from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
-import base64
+# import base64
 # import imageio
-import IPython
+# import IPython
 import matplotlib
 import matplotlib.pyplot as plt
 # import PIL.Image
@@ -60,10 +60,10 @@ if __name__ == "__main__":
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
-    replay_buffer_max_length = 1000000  # @param {type:"integer"}
+    replay_buffer_max_length = 100000  # @param {type:"integer"}
 
     batch_size = 64  # @param {type:"integer"}
-    learning_rate = 1e-6  # @param {type:"number"}
+    learning_rate = 1e-3  # @param {type:"number"}
     log_interval = 200  # @param {type:"integer"}
 
     num_eval_episodes = 10  # @param {type:"integer"}
@@ -97,15 +97,20 @@ if __name__ == "__main__":
     # thetaArr: inclination angle for each sat rad
     # kArr: normal vector for each sat metres
 
-    num_sats = 4
+    num_sats = 2
     radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
     omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
+    thetaArr = np.array([[0.0], [0.2]], dtype='float64')
     kArr = np.array([[0, 0, 0],
-                     [0, 0, 1],
-                     [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
-                     [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
+                     [0, 0, 1]],
                     dtype='float64')
+
+    # thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
+    # kArr = np.array([[0, 0, 0],
+    #                  [0, 0, 1],
+    #                  [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
+    #                  [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
+    #                 dtype='float64')
 
     # num_sats = 10
     # radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
@@ -203,8 +208,8 @@ if __name__ == "__main__":
     err_Y_ECI = {chr(i + 97): np.zeros(simLength) for i in range(num_sats)}
     err_Z_ECI = {chr(i + 97): np.zeros(simLength) for i in range(num_sats)}
 
-    tr_prior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
-    tr_posterior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
+    # tr_prior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
+    # tr_posterior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
     # info_gain = [0.] * num_sats
     # ~~~~~ Using EKF
 
@@ -328,14 +333,24 @@ class SatEnv(py_environment.PyEnvironment):
         in trace of covariance. 
         '''
 
+        tr_prior = [0.] * num_sats  # Trace of prior covariance
+        tr_posterior = [0.] * num_sats  # Trace of posterior covariance
         info_gain = [0.] * num_sats  # Information gain
         j = self._current_episode
+
+        for i in range(num_sats):
+            c = chr(i + 97)
+            tr_prior[i] = np.trace(self._cov_state[c])
+
+        sorted_prior = sorted(tr_prior)
+        if action == sorted_prior.index(sorted_prior[0]):
+            reward = 1
 
         # ~~~~~ Using EKF
         for i in range(num_sats):
             c = chr(i + 97)
             # Get prior information
-            tr_prior[c] = np.trace(self._cov_state[c])
+            # tr_prior[c] = np.trace(self._cov_state[c])
 
             if i != action:
                 satECIMes[c][:, j] = np.nan
@@ -357,8 +372,8 @@ class SatEnv(py_environment.PyEnvironment):
             satState[c], self._cov_state[c] = Filters.EKF_ECI(satState[c], self._cov_state[c], satECIMes[c][:, j],
                                                               stateTransMatrix, measureMatrix, covECI, procNoise)
 
-            tr_posterior[c] = np.trace(self._cov_state[c])
-            info_gain[i] = tr_posterior[c] - tr_prior[c]
+            tr_posterior[i] = np.trace(self._cov_state[c])
+            info_gain[i] = tr_posterior[i] - tr_prior[i]
 
             # Implement GOSPA here
             if info_gain[i] < 0:
@@ -370,27 +385,29 @@ class SatEnv(py_environment.PyEnvironment):
 
         # print(action)
         # print(info_gain)
-        sorted_info = sorted(info_gain)
-        if action == info_gain.index(sorted_info[0]):
-            reward = 1
-        elif action == info_gain.index(sorted_info[1]):
-            reward = 0
-        elif action == info_gain.index(sorted_info[2]):
-            reward = 0
-        elif action == info_gain.index(sorted_info[3]):
-            reward = -1
+        # sorted_info = sorted(info_gain)
+        # if action == info_gain.index(sorted_info[0]):
+        #     reward = 1
+        # elif action == info_gain.index(sorted_info[1]):
+        #     reward = 0
+        # elif action == info_gain.index(sorted_info[2]):
+        #     reward = 0
+        # elif action == info_gain.index(sorted_info[3]):
+        #     reward = -1
 
         self._current_episode += 1
         info_gain = np.array(info_gain, dtype=np.float32)
+
+        tr_posterior = np.array(np.sqrt(tr_posterior), dtype=np.float32)
 
         if self._current_episode >= self._max_episode_length:
             # print('here')
             # import pdb; pdb.set_trace() # ALWAYS ON SAME LINE
             self._episode_ended = True
-            return ts.termination(info_gain, reward)
+            return ts.termination(tr_posterior, reward)
         else:
             # print('here1')
-            return ts.transition(info_gain, reward=reward, discount=1.0)
+            return ts.transition(tr_posterior, reward=reward, discount=1.0)
 
 
 env = SatEnv()
