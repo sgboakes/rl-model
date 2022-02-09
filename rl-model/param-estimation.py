@@ -60,10 +60,10 @@ if __name__ == "__main__":
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
-    replay_buffer_max_length = 1000000  # @param {type:"integer"}
+    replay_buffer_max_length = 100000  # @param {type:"integer"}
 
     batch_size = 64  # @param {type:"integer"}
-    learning_rate = 1e-5  # @param {type:"number"}
+    learning_rate = 1e-4  # @param {type:"number"}
     log_interval = 200  # @param {type:"integer"}
 
     num_eval_episodes = 10  # @param {type:"integer"}
@@ -97,27 +97,12 @@ if __name__ == "__main__":
     # thetaArr: inclination angle for each sat rad
     # kArr: normal vector for each sat metres
 
-    num_sats = 2
+    num_sats = 25
     radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
     omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    thetaArr = np.array([[0.0], [0.2]], dtype='float64')
-    kArr = np.array([[0, 0, 0],
-                     [0, 0, 1]],
-                    dtype='float64')
-
-    # thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
-    # kArr = np.array([[0, 0, 0],
-    #                  [0, 0, 1],
-    #                  [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
-    #                  [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
-    #                 dtype='float64')
-
-    # num_sats = 10
-    # radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
-    # omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    # thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
-    # kArr = np.zeros((num_sats, 3), dtype='float64')
-    # kArr[:, 2] = 1.
+    thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
+    kArr = np.ones((num_sats, 3), dtype='float64')
+    kArr[:, :] = 1 / np.sqrt(3)
 
     # Make data structures
     satECI = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
@@ -208,50 +193,53 @@ if __name__ == "__main__":
     err_Y_ECI = {chr(i + 97): np.zeros(simLength) for i in range(num_sats)}
     err_Z_ECI = {chr(i + 97): np.zeros(simLength) for i in range(num_sats)}
 
+    # Field of view: pi/2
+    sensState = np.array((0, pi/2), dtype=np.float32)  # Sensor state, az_mid, elev_mid
+
     # tr_prior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
     # tr_posterior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
     # info_gain = [0.] * num_sats
     # ~~~~~ Using EKF
 
     delta = 1e-6
-    # for i in range(num_sats):
-    #     c = chr(i + 97)
-    #     mesCheck = False
-    #     for j in range(simLength):
-    #         while not mesCheck:
-    #             if np.all(np.isnan(satECIMes[c][:, j])):
-    #                 break
-    #             else:
-    #                 mesCheck = True
-    #                 break
-    #
-    #         if not mesCheck:
-    #             continue
-    #
-    #         func_params = {
-    #             "stepLength": stepLength,
-    #             "count": j + 1,
-    #             "sensECEF": sensECEF,
-    #             "sensLLA[0]": sensLLA[0],
-    #             "sensLLA[1]": sensLLA[1]
-    #         }
-    #
-    #         jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)), func_params,
-    #                                              delta)
-    #
-    #         # covECI = np.matmul(np.matmul(jacobian, covAER), jacobian.T)
-    #         covECI = jacobian @ covAER @ jacobian.T
-    #
-    #         stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
-    #
-    #         satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
-    #                                                    measureMatrix, covECI, procNoise)
-    #
-    #         totalStates[c][:, j] = np.reshape(satState[c], 6)
-    #         err_X_ECI[c][j] = (np.sqrt(np.abs(covState[c][0, 0])))
-    #         err_Y_ECI[c][j] = (np.sqrt(np.abs(covState[c][1, 1])))
-    #         err_Z_ECI[c][j] = (np.sqrt(np.abs(covState[c][2, 2])))
-    #         diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
+    for i in range(num_sats):
+        c = chr(i + 97)
+        mesCheck = False
+        for j in range(simLength):
+            while not mesCheck:
+                if np.all(np.isnan(satECIMes[c][:, j])):
+                    break
+                else:
+                    mesCheck = True
+                    break
+
+            if not mesCheck:
+                continue
+
+            func_params = {
+                "stepLength": stepLength,
+                "count": j + 1,
+                "sensECEF": sensECEF,
+                "sensLLA[0]": sensLLA[0],
+                "sensLLA[1]": sensLLA[1]
+            }
+
+            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)), func_params,
+                                                 delta)
+
+            # covECI = np.matmul(np.matmul(jacobian, covAER), jacobian.T)
+            covECI = jacobian @ covAER @ jacobian.T
+
+            stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
+
+            satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
+                                                       measureMatrix, covECI, procNoise)
+
+            totalStates[c][:, j] = np.reshape(satState[c], 6)
+            err_X_ECI[c][j] = (np.sqrt(np.abs(covState[c][0, 0])))
+            err_Y_ECI[c][j] = (np.sqrt(np.abs(covState[c][1, 1])))
+            err_Z_ECI[c][j] = (np.sqrt(np.abs(covState[c][2, 2])))
+            diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
     #         print(satState[c])
 
 
@@ -297,13 +285,14 @@ class SatEnv(py_environment.PyEnvironment):
     def __init__(self):
         self._num_look_spots = num_sats
         self._action_spec = array_spec.BoundedArraySpec(
-            shape=(), dtype=np.int32, minimum=0, maximum=self._num_look_spots-1, name='action')
+            shape=(), dtype=np.int32, minimum=0, maximum=3, name='action')  # can look up, down, left, right
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(num_sats, ), dtype=np.float32, minimum=0, name='observation')
         self._episode_ended = False
         self._current_episode = 0
         self._max_episode_length = simLength
-        self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
+        # Field of view: pi/2
+        self._sens_state = np.array((0, pi / 2), dtype=np.float32)  # Sensor state, az_mid, elev_mid
 
     def action_spec(self):
         return self._action_spec
@@ -312,97 +301,66 @@ class SatEnv(py_environment.PyEnvironment):
         return self._observation_spec
 
     def _reset(self):
-        # self._state = 0
         self._episode_ended = False
         self._current_episode = 0
-        self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
+        self._sens_state = np.array((0, pi / 2), dtype=np.float32)  # Sensor state, az_mid, elev_mid
         # import pdb; pdb.set_trace()
         return ts.restart(np.zeros(num_sats, dtype=np.float32))
 
     def _step(self, action):
 
         reward = 0
+        distance = [None] * num_sats
+        j = self._current_episode
         if self._episode_ended:
             # The last action ended the episode. Ignore the current action and start
             # a new episode.
             return self.reset()
 
         '''
-        Want to compare the prior covariance for each satellite to the posterior, and if action was the largest
-        information gain (largest difference between prior and posterior), then gain reward. Information gain quantified
-        in trace of covariance. 
+        Trying to point a telescope in the direction of satellites
         '''
 
-        tr_prior = [0.] * num_sats  # Trace of prior covariance
-        tr_posterior = [0.] * num_sats  # Trace of posterior covariance
-        info_gain = [0.] * num_sats  # Information gain
-        j = self._current_episode
+        # Action: 0=up, 1=down, 2=left, 3=right
+        slew = 0.3
+        if action == 0:
+            if not (self._sens_state[1] + slew) >= pi:
+                self._sens_state[1] += slew  # Radians
+        elif action == 1:
+            if not (self._sens_state[1] - slew) <= 0:
+                self._sens_state[1] -= slew  # Radians
+        elif action == 2:
+            if (self._sens_state[0] + slew) >= (2*pi):
+                self._sens_state[0] = abs(self._sens_state[0] - (2*pi))  # Radians
+            else:
+                self._sens_state[0] += slew
+        elif action == 3:
+            if (self._sens_state[0] - slew) <= 0:
+                self._sens_state[0] = (2*pi) - self._sens_state[0]  # Radians
+            else:
+                self._sens_state[0] -= slew
+        else:
+            raise ValueError('`action` should be between 0 and 3.')
 
-        # ~~~~~ Using EKF
         for i in range(num_sats):
             c = chr(i + 97)
-            # Get prior information
-            tr_prior[i] = np.trace(self._cov_state[c])
+            if abs(satAER[c][0, j] - self._sens_state[0]) < 1 and abs(satAER[c][1, j] - self._sens_state[1]) < 1:
+                reward += 1
 
-            if i != action:
-                satECIMes[c][:, j] = np.nan
+            distance[i] = np.sqrt(abs(satAER[c][0, j] - self._sens_state[0])**2 + abs(satAER[c][1, j] - self._sens_state[1])**2)
 
-            func_params = {
-                "stepLength": stepLength,
-                "count": j + 1,
-                "sensECEF": sensECEF,
-                "sensLLA[0]": sensLLA[0],
-                "sensLLA[1]": sensLLA[1]}
-
-            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)),
-                                                 func_params, delta)
-
-            covECI = jacobian @ covAER @ jacobian.T
-
-            stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
-
-            satState[c], self._cov_state[c] = Filters.EKF_ECI(satState[c], self._cov_state[c], satECIMes[c][:, j],
-                                                              stateTransMatrix, measureMatrix, covECI, procNoise)
-
-            tr_posterior[i] = np.trace(self._cov_state[c])
-            if np.isnan(tr_posterior[i]):
-                tr_posterior[i] = 0
-            info_gain[i] = tr_posterior[i] - tr_prior[i]
-
-            # Implement GOSPA here
-            if info_gain[i] < 0:
-                info_gain[i] = 0
-            else:
-                info_gain[i] = np.sqrt(info_gain[i])
-
-        # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
-
-        # print(action)
-        # print(info_gain)
-        sorted_info = sorted(info_gain)
-        if action == info_gain.index(sorted_info[0]):
-            reward = 1
-        elif action == info_gain.index(sorted_info[1]):
-            reward = 0
-        elif action == info_gain.index(sorted_info[2]):
-            reward = 0
-        elif action == info_gain.index(sorted_info[3]):
-            reward = -1
+        distance = np.array(distance, dtype=np.float32)
 
         self._current_episode += 1
-        # info_gain = np.array(info_gain, dtype=np.float32)
-        #
-        tr_prior = np.array(np.sqrt(tr_prior), dtype=np.float32)
-        tr_posterior = np.array(np.sqrt(tr_posterior), dtype=np.float32)
 
         if self._current_episode >= self._max_episode_length:
             # print('here')
             # import pdb; pdb.set_trace() # ALWAYS ON SAME LINE
             self._episode_ended = True
-            return ts.termination(tr_posterior, reward)
+            return ts.termination(distance, reward)
         else:
             # print('here1')
-            return ts.transition(tr_posterior, reward=reward, discount=1.0)
+            return ts.transition(distance, reward=reward, discount=1.0)
 
 
 env = SatEnv()
