@@ -11,6 +11,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+from abc import ABC
 
 import pysatellite.Functions
 import tensorflow as tf
@@ -53,6 +54,7 @@ import pysatellite.config as cfg
 if __name__ == "__main__":
 
     plt.close('all')
+    np.random.seed(1685468)
     # ~~~~ Variables
 
     # Hyper-parameters
@@ -195,6 +197,7 @@ if __name__ == "__main__":
 
     # Field of view: pi/2
     sensState = np.array((0, pi/2), dtype=np.float32)  # Sensor state, az_mid, elev_mid
+    sens_list = np.zeros((simLength, 2), dtype=np.float32)
 
     # tr_prior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
     # tr_posterior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
@@ -234,12 +237,12 @@ if __name__ == "__main__":
 
             satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
                                                        measureMatrix, covECI, procNoise)
-
-            totalStates[c][:, j] = np.reshape(satState[c], 6)
-            err_X_ECI[c][j] = (np.sqrt(np.abs(covState[c][0, 0])))
-            err_Y_ECI[c][j] = (np.sqrt(np.abs(covState[c][1, 1])))
-            err_Z_ECI[c][j] = (np.sqrt(np.abs(covState[c][2, 2])))
-            diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
+    #
+    #         totalStates[c][:, j] = np.reshape(satState[c], 6)
+    #         err_X_ECI[c][j] = (np.sqrt(np.abs(covState[c][0, 0])))
+    #         err_Y_ECI[c][j] = (np.sqrt(np.abs(covState[c][1, 1])))
+    #         err_Z_ECI[c][j] = (np.sqrt(np.abs(covState[c][2, 2])))
+    #         diffState[c][:, j] = totalStates[c][0:3, j] - satECI[c][:, j]
     #         print(satState[c])
 
 
@@ -280,12 +283,13 @@ class PyEnvironment(object):
         """Apply action and return new time_step."""
 
         
-class SatEnv(py_environment.PyEnvironment):
+class SatEnv(py_environment.PyEnvironment, ABC):
 
     def __init__(self):
+        super().__init__()
         self._num_look_spots = num_sats
         self._action_spec = array_spec.BoundedArraySpec(
-            shape=(), dtype=np.int32, minimum=0, maximum=3, name='action')  # can look up, down, left, right
+            shape=(), dtype=np.int32, minimum=0, maximum=4, name='action')  # can look up, down, left, right, or none
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(num_sats, ), dtype=np.float32, minimum=0, name='observation')
         self._episode_ended = False
@@ -293,6 +297,7 @@ class SatEnv(py_environment.PyEnvironment):
         self._max_episode_length = simLength
         # Field of view: pi/2
         self._sens_state = np.array((0, pi / 2), dtype=np.float32)  # Sensor state, az_mid, elev_mid
+        self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
 
     def action_spec(self):
         return self._action_spec
@@ -304,6 +309,7 @@ class SatEnv(py_environment.PyEnvironment):
         self._episode_ended = False
         self._current_episode = 0
         self._sens_state = np.array((0, pi / 2), dtype=np.float32)  # Sensor state, az_mid, elev_mid
+        self._cov_state = {chr(i + 97): np.float64(1e6) * np.identity(6) for i in range(num_sats)}
         # import pdb; pdb.set_trace()
         return ts.restart(np.zeros(num_sats, dtype=np.float32))
 
@@ -311,6 +317,9 @@ class SatEnv(py_environment.PyEnvironment):
 
         reward = 0
         distance = [None] * num_sats
+        tr_prior = [0.] * num_sats  # Trace of prior covariance
+        tr_posterior = [0.] * num_sats  # Trace of posterior covariance
+        info_gain = [0.] * num_sats  # Information gain
         j = self._current_episode
         if self._episode_ended:
             # The last action ended the episode. Ignore the current action and start
@@ -321,8 +330,9 @@ class SatEnv(py_environment.PyEnvironment):
         Trying to point a telescope in the direction of satellites
         '''
 
-        # Action: 0=up, 1=down, 2=left, 3=right
-        slew = 0.3
+        # Action: 0=up, 1=down, 2=left, 3=right, 4=nothing
+        # LT Slew: 2deg/s
+        slew = np.deg2rad(2 * stepLength)
         if action == 0:
             if not (self._sens_state[1] + slew) >= pi:
                 self._sens_state[1] += slew  # Radians
@@ -339,17 +349,50 @@ class SatEnv(py_environment.PyEnvironment):
                 self._sens_state[0] = (2*pi) - self._sens_state[0]  # Radians
             else:
                 self._sens_state[0] -= slew
+        elif action == 4:
+            self._sens_state = self._sens_state
         else:
-            raise ValueError('`action` should be between 0 and 3.')
+            raise ValueError('`action` should be between 0 and 4.')
+
+        sens_list[j, :] = self._sens_state
 
         for i in range(num_sats):
             c = chr(i + 97)
-            if abs(satAER[c][0, j] - self._sens_state[0]) < 1 and abs(satAER[c][1, j] - self._sens_state[1]) < 1:
+            if abs(satAER[c][0, j] - self._sens_state[0]) < 0.5 and abs(satAER[c][1, j] - self._sens_state[1]) < 0.5:
                 reward += 1
 
-            distance[i] = np.sqrt(abs(satAER[c][0, j] - self._sens_state[0])**2 + abs(satAER[c][1, j] - self._sens_state[1])**2)
+            distance[i] = np.sqrt(abs(satAERMes[c][0, j] - self._sens_state[0])**2 + abs(satAERMes[c][1, j] -
+                                                                                         self._sens_state[1])**2)
+
+        # ~~~~~ Using EKF
+        # for i in range(num_sats):
+        #     c = chr(i + 97)
+        #     # Get prior information
+        #     tr_prior[i] = np.trace(self._cov_state[c])
+        #
+        #     func_params = {
+        #         "stepLength": stepLength,
+        #         "count": j + 1,
+        #         "sensECEF": sensECEF,
+        #         "sensLLA[0]": sensLLA[0],
+        #         "sensLLA[1]": sensLLA[1]}
+        #
+        #     jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMes[c][:, j], (3, 1)),
+        #                                          func_params, delta)
+        #
+        #     covECI = jacobian @ covAER @ jacobian.T
+        #
+        #     stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
+        #
+        #     satState[c], self._cov_state[c] = Filters.EKF_ECI(satState[c], self._cov_state[c], satECIMes[c][:, j],
+        #                                                       stateTransMatrix, measureMatrix, covECI, procNoise)
+        #
+        #     err_X_ECI[c][j] = (np.sqrt(np.abs(self._cov_state[c][0, 0])))
+        #     err_Y_ECI[c][j] = (np.sqrt(np.abs(self._cov_state[c][1, 1])))
+        #     err_Z_ECI[c][j] = (np.sqrt(np.abs(self._cov_state[c][2, 2])))
 
         distance = np.array(distance, dtype=np.float32)
+        # print(distance)
 
         self._current_episode += 1
 
@@ -430,7 +473,7 @@ q_values_layer = tf.keras.layers.Dense(
 q_net = sequential.Sequential(dense_layers + [q_values_layer])
 
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+optimizer = tf.keras.optimizers.Adam(learning_rate)
 
 train_step_counter = tf.Variable(0)
 
@@ -538,7 +581,9 @@ agent.train_step_counter.assign(0)
 
 # Evaluate the agent's policy once before training.
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+rnd_return = compute_avg_return(eval_env, random_policy, num_eval_episodes)
 returns = [avg_return]
+rnd_returns = [rnd_return]
 
 # Reset the environment.
 time_step = train_py_env.reset()
@@ -568,14 +613,18 @@ for _ in range(num_iterations):
 
     if step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+        rnd_return = compute_avg_return(eval_env, random_policy, num_eval_episodes)
         print('step = {0}: Average Return = {1}'.format(step, avg_return))
         returns.append(avg_return)
+        rnd_returns.append(rnd_return)
 
 
 # @test {"skip": true}
 
 iterations = range(0, num_iterations + 1, eval_interval)
-plt.plot(iterations, returns)
+plt.plot(iterations, returns, label='DQN Policy')
+plt.plot(iterations, rnd_returns, label='Random Policy')
+plt.legend()
 plt.ylabel('Average Return')
 plt.xlabel('Iterations')
 plt.show()

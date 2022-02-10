@@ -60,10 +60,10 @@ if __name__ == "__main__":
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
-    replay_buffer_max_length = 1000000  # @param {type:"integer"}
+    replay_buffer_max_length = 100000  # @param {type:"integer"}
 
     batch_size = 64  # @param {type:"integer"}
-    learning_rate = 1e-5  # @param {type:"number"}
+    learning_rate = 1e-3  # @param {type:"number"}
     log_interval = 200  # @param {type:"integer"}
 
     num_eval_episodes = 10  # @param {type:"integer"}
@@ -97,20 +97,20 @@ if __name__ == "__main__":
     # thetaArr: inclination angle for each sat rad
     # kArr: normal vector for each sat metres
 
-    num_sats = 2
+    num_sats = 4
     radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
     omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    thetaArr = np.array([[0.0], [0.2]], dtype='float64')
-    kArr = np.array([[0, 0, 0],
-                     [0, 0, 1]],
-                    dtype='float64')
-
-    # thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
+    # thetaArr = np.array([[0.0], [0.2]], dtype='float64')
     # kArr = np.array([[0, 0, 0],
-    #                  [0, 0, 1],
-    #                  [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
-    #                  [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
+    #                  [0, 0, 1]],
     #                 dtype='float64')
+
+    thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
+    kArr = np.array([[0, 0, 0],
+                     [0, 0, 1],
+                     [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
+                     [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
+                    dtype='float64')
 
     # num_sats = 10
     # radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
@@ -369,7 +369,6 @@ class SatEnv(py_environment.PyEnvironment):
                 tr_posterior[i] = 0
             info_gain[i] = tr_posterior[i] - tr_prior[i]
 
-            # Implement GOSPA here
             if info_gain[i] < 0:
                 info_gain[i] = 0
             else:
@@ -378,6 +377,7 @@ class SatEnv(py_environment.PyEnvironment):
         # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
 
         # print(action)
+        # print(tr_posterior)
         # print(info_gain)
         sorted_info = sorted(info_gain)
         if action == info_gain.index(sorted_info[0]):
