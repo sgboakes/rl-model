@@ -477,7 +477,7 @@ optimizer = tf.keras.optimizers.Adam(learning_rate)
 
 train_step_counter = tf.Variable(0)
 
-agent = dqn_agent.DqnAgent(
+agent = dqn_agent.DdqnAgent(
     train_env.time_step_spec(),
     train_env.action_spec(),
     q_network=q_net,

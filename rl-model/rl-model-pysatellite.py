@@ -53,6 +53,7 @@ import pysatellite.config as cfg
 if __name__ == "__main__":
 
     plt.close('all')
+    np.random.seed(4)
     # ~~~~ Variables
 
     # Hyper-parameters
@@ -60,10 +61,10 @@ if __name__ == "__main__":
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
-    replay_buffer_max_length = 100000  # @param {type:"integer"}
+    replay_buffer_max_length = 200000  # @param {type:"integer"}
 
     batch_size = 64  # @param {type:"integer"}
-    learning_rate = 1e-3  # @param {type:"number"}
+    learning_rate = 1e-5  # @param {type:"number"}
     log_interval = 200  # @param {type:"integer"}
 
     num_eval_episodes = 10  # @param {type:"integer"}
@@ -97,27 +98,12 @@ if __name__ == "__main__":
     # thetaArr: inclination angle for each sat rad
     # kArr: normal vector for each sat metres
 
-    num_sats = 4
+    num_sats = 6
     radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
     omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    # thetaArr = np.array([[0.0], [0.2]], dtype='float64')
-    # kArr = np.array([[0, 0, 0],
-    #                  [0, 0, 1]],
-    #                 dtype='float64')
-
-    thetaArr = np.array([[0.0], [0.1], [0.2], [0.3]], dtype='float64')
-    kArr = np.array([[0, 0, 0],
-                     [0, 0, 1],
-                     [1 / np.sqrt(2), 1 / np.sqrt(2), 0],
-                     [1 / np.sqrt(3), 1 / np.sqrt(3), 1 / np.sqrt(3)]],
-                    dtype='float64')
-
-    # num_sats = 10
-    # radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
-    # omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    # thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
-    # kArr = np.zeros((num_sats, 3), dtype='float64')
-    # kArr[:, 2] = 1.
+    thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
+    kArr = np.ones((num_sats, 3), dtype='float64')
+    kArr[:, :] = 1 / np.sqrt(3)
 
     # Make data structures
     satECI = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
@@ -131,7 +117,7 @@ if __name__ == "__main__":
                           [radArr[i] * cos(omegaArr[i] * (j + 1) * stepLength)]], dtype='float64')
 
             satECI[c][:, j] = (v @ cos(thetaArr[i])) + (np.cross(kArr[i, :].T, v.T) * sin(thetaArr[i])) + (
-                        kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
+                    kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
 
             satAER[c][:, j:j + 1] = Transformations.ECItoAER(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
                                                              sensLLA[1])
@@ -162,7 +148,7 @@ if __name__ == "__main__":
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
-            satECIMes[c][:, j:j + 1] = Transformations.AERtoECI(satAERMes[c][:, j], stepLength, j+1, sensECEF,
+            satECIMes[c][:, j:j + 1] = Transformations.AERtoECI(satAERMes[c][:, j], stepLength, j + 1, sensECEF,
                                                                 sensLLA[0], sensLLA[1])
 
     satState = {chr(i + 97): np.zeros((6, 1)) for i in range(num_sats)}
@@ -291,15 +277,15 @@ class PyEnvironment(object):
     def _step(self, action):
         """Apply action and return new time_step."""
 
-        
+
 class SatEnv(py_environment.PyEnvironment):
 
     def __init__(self):
         self._num_look_spots = num_sats
         self._action_spec = array_spec.BoundedArraySpec(
-            shape=(), dtype=np.int32, minimum=0, maximum=self._num_look_spots-1, name='action')
+            shape=(), dtype=np.int32, minimum=0, maximum=self._num_look_spots - 1, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
-            shape=(num_sats, ), dtype=np.float32, minimum=0, name='observation')
+            shape=(num_sats,), dtype=np.float32, minimum=0, name='observation')
         self._episode_ended = False
         self._current_episode = 0
         self._max_episode_length = simLength
@@ -330,7 +316,7 @@ class SatEnv(py_environment.PyEnvironment):
         '''
         Want to compare the prior covariance for each satellite to the posterior, and if action was the largest
         information gain (largest difference between prior and posterior), then gain reward. Information gain quantified
-        in trace of covariance. 
+        in trace of covariance. int(step/eval_interval)-1
         '''
 
         tr_prior = [0.] * num_sats  # Trace of prior covariance
@@ -380,29 +366,34 @@ class SatEnv(py_environment.PyEnvironment):
         # print(tr_posterior)
         # print(info_gain)
         sorted_info = sorted(info_gain)
-        if action == info_gain.index(sorted_info[0]):
+        # print(sorted_info)
+        # sorted_info = np.array(sorted_info)
+        if action == info_gain.index(max(sorted_info)):
             reward = 1
-        elif action == info_gain.index(sorted_info[1]):
-            reward = 0
-        elif action == info_gain.index(sorted_info[2]):
-            reward = 0
-        elif action == info_gain.index(sorted_info[3]):
+        elif action == info_gain.index(sorted_info[0]):
             reward = -1
+        else:
+            reward = 0
 
+        # print(reward)
         self._current_episode += 1
-        # info_gain = np.array(info_gain, dtype=np.float32)
-        #
-        tr_prior = np.array(np.sqrt(tr_prior), dtype=np.float32)
+        info_gain = np.array(info_gain, dtype=np.float32)
+        info_gain = np.nan_to_num(info_gain, nan=1)
+        info_gain[:] = info_gain[:] / np.sum(info_gain)
         tr_posterior = np.array(np.sqrt(tr_posterior), dtype=np.float32)
+
+        tr_posterior = np.nan_to_num(tr_posterior, nan=0)
+        # print(tr_posterior)
+        tr_posterior[:] = tr_posterior[:] / np.sum(tr_posterior)
 
         if self._current_episode >= self._max_episode_length:
             # print('here')
             # import pdb; pdb.set_trace() # ALWAYS ON SAME LINE
             self._episode_ended = True
-            return ts.termination(tr_posterior, reward)
+            return ts.termination(info_gain, reward)
         else:
             # print('here1')
-            return ts.transition(tr_posterior, reward=reward, discount=1.0)
+            return ts.transition(info_gain, reward=reward, discount=1.0)
 
 
 env = SatEnv()
@@ -412,7 +403,7 @@ tf_env = tf_py_environment.TFPyEnvironment(env)
 time_step = tf_env.reset()
 rewards = []
 steps = []
-num_episodes = 5
+num_episodes = 8
 
 for _ in range(num_episodes):
     episode_reward = 0
@@ -435,16 +426,15 @@ print('avg_length', avg_length, 'avg_reward:', avg_reward)
 
 env.reset()
 
-
 train_py_env = env
 eval_py_env = env
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
-
 fc_layer_params = (100, 50)
 action_tensor_spec = tensor_spec.from_spec(env.action_spec())
 num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
+
 
 # Define a helper function to create Dense layers configured with the right
 # activation and kernel initializer.
@@ -455,7 +445,8 @@ def dense_layer(num_units):
         num_units,
         activation=tf.keras.activations.relu,
         kernel_initializer=tf.keras.initializers.VarianceScaling(
-                            scale=2.0, mode='fan_in', distribution='truncated_normal'))
+            scale=2.0, mode='fan_in', distribution='truncated_normal'))
+
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
@@ -471,12 +462,11 @@ q_values_layer = tf.keras.layers.Dense(
     bias_initializer=tf.keras.initializers.Constant(-0.2))
 q_net = sequential.Sequential(dense_layers + [q_values_layer])
 
-
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
 train_step_counter = tf.Variable(0)
 
-agent = dqn_agent.DqnAgent(
+agent = dqn_agent.DdqnAgent(
     train_env.time_step_spec(),
     train_env.action_spec(),
     q_network=q_net,
@@ -486,7 +476,6 @@ agent = dqn_agent.DqnAgent(
 
 agent.initialize()
 
-
 eval_policy = agent.policy
 collect_policy = agent.collect_policy
 random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(),
@@ -495,10 +484,8 @@ random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(),
 
 # @test {"skip": true}
 def compute_avg_return(environment, policy, num_episodes=10):
-
     total_return = 0.0
     for _ in range(num_episodes):
-
         time_step = environment.reset()
         episode_return = 0.0
 
@@ -519,7 +506,7 @@ compute_avg_return(eval_env, random_policy, num_eval_episodes)
 
 table_name = 'uniform_table'
 replay_buffer_signature = tensor_spec.from_spec(
-      agent.collect_data_spec)
+    agent.collect_data_spec)
 replay_buffer_signature = tensor_spec.add_outer_dim(
     replay_buffer_signature)
 
@@ -540,10 +527,9 @@ replay_buffer = reverb_replay_buffer.ReverbReplayBuffer(
     local_server=reverb_server)
 
 rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
-  replay_buffer.py_client,
-  table_name,
-  sequence_length=2)
-
+    replay_buffer.py_client,
+    table_name,
+    sequence_length=2)
 
 # agent.collect_data_spec
 # agent.collect_data_spec._fields
@@ -553,10 +539,9 @@ rb_observer = reverb_utils.ReverbAddTrajectoryObserver(
 py_driver.PyDriver(
     env,
     py_tf_eager_policy.PyTFEagerPolicy(
-      random_policy, use_tf_function=True),
+        random_policy, use_tf_function=True),
     [rb_observer],
     max_steps=initial_collect_steps).run(train_py_env.reset())
-
 
 # Dataset generates trajectories with shape [Bx2x...]
 dataset = replay_buffer.as_dataset(
@@ -580,7 +565,9 @@ agent.train_step_counter.assign(0)
 
 # Evaluate the agent's policy once before training.
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+rnd_return = compute_avg_return(eval_env, random_policy, num_eval_episodes)
 returns = [avg_return]
+rnd_returns = [rnd_return]
 
 # Reset the environment.
 time_step = train_py_env.reset()
@@ -589,7 +576,7 @@ time_step = train_py_env.reset()
 collect_driver = py_driver.PyDriver(
     env,
     py_tf_eager_policy.PyTFEagerPolicy(
-      agent.collect_policy, use_tf_function=True),
+        agent.collect_policy, use_tf_function=True),
     [rb_observer],
     max_steps=collect_steps_per_iteration)
 
@@ -610,15 +597,19 @@ for _ in range(num_iterations):
 
     if step % eval_interval == 0:
         avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+        rnd_return = compute_avg_return(eval_env, random_policy, num_eval_episodes)
+
         print('step = {0}: Average Return = {1}'.format(step, avg_return))
         returns.append(avg_return)
-
+        rnd_returns.append(rnd_return)
 
 # @test {"skip": true}
 
 iterations = range(0, num_iterations + 1, eval_interval)
-plt.plot(iterations, returns)
+plt.plot(iterations, returns, label='DQN Policy')
+plt.plot(iterations, rnd_returns, label='Random Policy')
 plt.ylabel('Average Return')
 plt.xlabel('Iterations')
+plt.legend()
 plt.show()
 # plt.ylim(top=250)
