@@ -61,10 +61,10 @@ if __name__ == "__main__":
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
-    replay_buffer_max_length = 200000  # @param {type:"integer"}
+    replay_buffer_max_length = 100000  # @param {type:"integer"}
 
     batch_size = 64  # @param {type:"integer"}
-    learning_rate = 1e-5  # @param {type:"number"}
+    learning_rate = 1e-3  # @param {type:"number"}
     log_interval = 200  # @param {type:"integer"}
 
     num_eval_episodes = 10  # @param {type:"integer"}
@@ -331,7 +331,7 @@ class SatEnv(py_environment.PyEnvironment):
             tr_prior[i] = np.trace(self._cov_state[c])
 
             if i != action:
-                satECIMes[c][:, j] = np.nan
+                satECIMes[c][:, j] = np.reshape(([[np.nan], [np.nan], [np.nan]]), (3,))
 
             func_params = {
                 "stepLength": stepLength,
@@ -354,6 +354,7 @@ class SatEnv(py_environment.PyEnvironment):
             if np.isnan(tr_posterior[i]):
                 tr_posterior[i] = 0
             info_gain[i] = tr_posterior[i] - tr_prior[i]
+            info_gain[i] = np.linalg.norm(tr_posterior[i])
 
             if info_gain[i] < 0:
                 info_gain[i] = 0
@@ -362,18 +363,21 @@ class SatEnv(py_environment.PyEnvironment):
 
         # print('simlength {s} current ep {e}'.format(s=simLength,e=self._current_episode))
 
-        # print(action)
-        # print(tr_posterior)
-        # print(info_gain)
         sorted_info = sorted(info_gain)
-        # print(sorted_info)
-        # sorted_info = np.array(sorted_info)
+        # if action == info_gain.index(max(sorted_info)):
+        #     reward = 1
+        # elif action == info_gain.index(sorted_info[0]):
+        #     reward = -1
+        # else:
+        #     reward = 0
+
         if action == info_gain.index(max(sorted_info)):
-            reward = 1
-        elif action == info_gain.index(sorted_info[0]):
-            reward = -1
+            reward = num_sats * 4
         else:
-            reward = 0
+            for i in sorted_info:
+                if action == info_gain.index(i):
+                    reward = sorted_info.index(i)
+
 
         # print(reward)
         self._current_episode += 1
