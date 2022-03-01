@@ -13,43 +13,27 @@ from __future__ import print_function
 import abc
 from abc import ABC
 
-import pysatellite.Functions
 import tensorflow as tf
 import numpy as np
-from numpy import int32, float32
+import matplotlib.pyplot as plt
+from pysatellite import Transformations, Functions, Filters
+import pysatellite.config as cfg
 
+import reverb
 from tf_agents.environments import py_environment
-from tf_agents.environments import tf_environment
-from tf_agents.environments import tf_py_environment
 from tf_agents.environments import utils
 from tf_agents.specs import array_spec
-from tf_agents.environments import wrappers
-from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
-# import base64
-# import imageio
-# import IPython
-import matplotlib
-import matplotlib.pyplot as plt
-# import PIL.Image
-# import pyvirtualdisplay
-import reverb
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import py_driver
-from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
-from tf_agents.eval import metric_utils
-from tf_agents.metrics import tf_metrics
 from tf_agents.networks import sequential
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
-from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
-from pysatellite import Transformations, Functions, Filters
-import pysatellite.config as cfg
 
 
 class PyEnvironment(object):
@@ -128,6 +112,7 @@ class SatEnv(py_environment.PyEnvironment, ABC):
     def _step(self, action):
 
         reward = 0
+        global satAERMesT, satECIMesT
         distance = [None] * num_sats
         tr_prior = [0.] * num_sats  # Trace of prior covariance
         tr_posterior = [0.] * num_sats  # Trace of posterior covariance
@@ -175,8 +160,8 @@ class SatEnv(py_environment.PyEnvironment, ABC):
                 satAERMesT[c][:, j] = satAERMes[c][:, j]
                 satECIMesT[c][:, j] = satECIMes[c][:, j]
             else:
-                satAERMesT[c][:, j] = np.reshape(([[np.nan], [np.nan], [np.nan]]), (3,))
-                satECIMesT[c][:, j] = np.reshape(([[np.nan], [np.nan], [np.nan]]), (3,))
+                satAERMesT[c][:, j] = np.reshape(([[0.], [0.], [0.]]), (3,))
+                satECIMesT[c][:, j] = np.reshape(([[0.], [0.], [0.]]), (3,))
 
             distance[i] = np.sqrt(abs(satAER[c][0, j] - self._sens_state[0]) ** 2 + abs(satAER[c][1, j] -
                                                                                         self._sens_state[1]) ** 2)
@@ -196,8 +181,27 @@ class SatEnv(py_environment.PyEnvironment, ABC):
             return ts.transition(distance, reward=reward, discount=1.0)
 
 
+def compute_avg_return(environment, policy, num_episodes=10):
+
+    total_return = 0.0
+    for _ in range(num_episodes):
+
+        time_step = environment.reset()
+        episode_return = 0.0
+
+    while not time_step.is_last():
+        action_step = policy.action(time_step)
+        time_step = environment.step(action_step.action)
+        episode_return += time_step.reward
+    total_return += episode_return
+
+    avg_return = total_return / num_episodes
+    return avg_return.numpy()[0]
+
+
 def generate_measurements(num_sats, simLength):
 
+    global satVisCheck
     radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
     omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
     thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
@@ -207,6 +211,7 @@ def generate_measurements(num_sats, simLength):
     # Make data structures
     satECI = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
     satAER = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    satAERCheck = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
 
     for i in range(num_sats):
         c = chr(i + 97)
@@ -218,15 +223,25 @@ def generate_measurements(num_sats, simLength):
             satECI[c][:, j] = (v @ cos(thetaArr[i])) + (np.cross(kArr[i, :].T, v.T) * sin(thetaArr[i])) + (
                     kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
 
-            satAER[c][:, j:j + 1] = Transformations.ECItoAER(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
+            satAER[c][:, j:j+1] = Transformations.ECItoAER(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
                                                              sensLLA[1])
+
+            if trans_earth:
+                satAERCheck[c][:, j:j+1] = satAER[c][:, j:j+1]
 
             if not trans_earth:
                 if satAER[c][1, j] < 0:
                     satAER[c][:, j:j + 1] = np.array([[np.nan], [np.nan], [np.nan]])
+            elif trans_earth:
+                if satAERCheck[c][1, j] < 0:
+                    satAERCheck[c][:, j:j + 1] = np.array([[np.nan], [np.nan], [np.nan]])
 
-        if np.isnan(satAER[c]).all():
+        if (not trans_earth) & np.isnan(satAER[c]).all():
             print('Satellite {s} is not observable'.format(s=c))
+            satVisCheck[c] = False
+        elif trans_earth & np.isnan(satAERCheck[c]).all():
+            print('Satellite {s} is not observable'.format(s=c))
+            satVisCheck[c] = False
 
     # Add small deviations for measurements
     # Using calculated max measurement deviations for LT:
@@ -253,50 +268,38 @@ def generate_measurements(num_sats, simLength):
     return satAER, satECI, satAERMes, satECIMes
 
 
-def filtering(num_sats, simLength, sat_aer_mes, sat_eci_mes):
+def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
 
-    total_cov = 0
-    satState = np.zeros((6, 1))
-    covState = np.float64(1e10) * np.identity(6)
-    if np.isnan(sat_eci_mes).all():
-        return np.trace(covState)
-    elif np.isnan(sat_aer_mes).all():
-        return np.trace(covState)
+    sat_state = np.zeros((6, 1))
+    cov_state = np.float64(1e16) * np.identity(6)
 
-    for j in range(simLength):
-        if np.all(np.isnan(sat_eci_mes[:, j])):
-            continue
-        else:
-            satState[0:3] = np.reshape(sat_eci_mes[:, j], (3, 1))
-            break
+    sat_state[0:3] = np.reshape(satECIMes[c][:, 0], (3, 1))
 
     # Process noise
-    stdAng = np.float64(1e-5)
-    coefA = np.float64(0.25 * stepLength ** 4.0 * stdAng ** 2.0)
-    coefB = np.float64(stepLength ** 2.0 * stdAng ** 2.0)
-    coefC = np.float64(0.5 * stepLength ** 3.0 * stdAng ** 2.0)
+    std_ang = np.float64(1e-5)
+    coef_a = np.float64(0.25 * stepLength ** 4.0 * std_ang ** 2.0)
+    coef_b = np.float64(stepLength ** 2.0 * std_ang ** 2.0)
+    coef_c = np.float64(0.5 * stepLength ** 3.0 * std_ang ** 2.0)
 
-    procNoise = np.array([[coefA, 0, 0, coefC, 0, 0],
-                          [0, coefA, 0, 0, coefC, 0],
-                          [0, 0, coefA, 0, 0, coefC],
-                          [coefC, 0, 0, coefB, 0, 0],
-                          [0, coefC, 0, 0, coefB, 0],
-                          [0, 0, coefC, 0, 0, coefB]],
-                         dtype='float64')
+    proc_noise = np.array([[coef_a, 0, 0, coef_c, 0, 0],
+                           [0, coef_a, 0, 0, coef_c, 0],
+                           [0, 0, coef_a, 0, 0, coef_c],
+                           [coef_c, 0, 0, coef_b, 0, 0],
+                           [0, coef_c, 0, 0, coef_b, 0],
+                           [0, 0, coef_c, 0, 0, coef_b]],
+                          dtype='float64')
 
+    ang_meas_dev, range_meas_dev = 1e-6, 20
 
+    cov_aer = np.array([[(ang_meas_dev * 180 / pi) ** 2, 0, 0],
+                        [0, (ang_meas_dev * 180 / pi) ** 2, 0],
+                        [0, 0, range_meas_dev ** 2]],
+                       dtype='float64')
 
-    angMeasDev, rangeMeasDev = 1e-6, 20
-
-    covAER = np.array([[(angMeasDev * 180 / pi) ** 2, 0, 0],
-                       [0, (angMeasDev * 180 / pi) ** 2, 0],
-                       [0, 0, rangeMeasDev ** 2]],
-                      dtype='float64')
-
-    measureMatrix = np.append(np.identity(3), np.zeros((3, 3)), axis=1)
+    measure_matrix = np.append(np.identity(3), np.zeros((3, 3)), axis=1)
 
     delta = 1e-6
-    for j in range(simLength):
+    for j in range(sim_length):
 
         func_params = {
             "stepLength": stepLength,
@@ -305,25 +308,22 @@ def filtering(num_sats, simLength, sat_aer_mes, sat_eci_mes):
             "sensLLA[0]": sensLLA[0],
             "sensLLA[1]": sensLLA[1]}
 
-        jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(sat_aer_mes[:, j], (3, 1)),
-                                             func_params, delta)
+        jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(sat_aer_mes[:, j], (3, 1)), func_params, delta)
 
-        covECI = jacobian @ covAER @ jacobian.T
+        cov_eci = jacobian @ cov_aer @ jacobian.T
 
-        stateTransMatrix = Functions.jacobian_finder("kepler", satState, [], delta)
+        state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
 
-        satState, covState = Filters.EKF_ECI(satState, covState, sat_eci_mes[:, j],
-                                             stateTransMatrix, measureMatrix, covECI, procNoise)
+        sat_state, cov_state = Filters.EKF_ECI(sat_state, cov_state, sat_eci_mes[:, j], state_trans_matrix,
+                                               measure_matrix, cov_eci, proc_noise)
 
-    total_cov += np.trace(covState)
-
-    return total_cov
+    return np.trace(cov_state)
 
 
 if __name__ == "__main__":
 
     plt.close('all')
-    np.random.seed(1685468)
+    np.random.seed(2)
     # ~~~~ Variables
 
     # Hyper-parameters
@@ -335,7 +335,7 @@ if __name__ == "__main__":
 
     batch_size = 64  # @param {type:"integer"}
     learning_rate = 1e-4  # @param {type:"number"}
-    log_interval = 200  # @param {type:"integer"}
+    log_interval = 500  # @param {type:"integer"}
 
     num_eval_episodes = 10  # @param {type:"integer"}
     eval_interval = 1000  # @param {type:"integer"}
@@ -370,6 +370,7 @@ if __name__ == "__main__":
 
     num_sats = 25
     # global satAER, satECI, satAERMes, satECIMes
+    satVisCheck = {chr(i + 97): True for i in range(num_sats)}
     satAER, satECI, satAERMes, satECIMes = generate_measurements(num_sats, simLength)
     satAERMesT = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
     satECIMesT = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
@@ -424,7 +425,6 @@ if __name__ == "__main__":
     # Define a helper function to create Dense layers configured with the right
     # activation and kernel initializer.
 
-
     def dense_layer(num_units):
         return tf.keras.layers.Dense(
             num_units,
@@ -465,24 +465,6 @@ if __name__ == "__main__":
                                                     train_env.action_spec())
 
     # @test {"skip": true}
-    def compute_avg_return(environment, policy, num_episodes=10):
-
-        total_return = 0.0
-        for _ in range(num_episodes):
-
-            time_step = environment.reset()
-            episode_return = 0.0
-
-        while not time_step.is_last():
-            action_step = policy.action(time_step)
-            time_step = environment.step(action_step.action)
-            episode_return += time_step.reward
-        total_return += episode_return
-
-        avg_return = total_return / num_episodes
-        return avg_return.numpy()[0]
-
-
     # See also the metrics module for standard implementations of different metrics.
     # https://github.com/tensorflow/agents/tree/master/tf_agents/metrics
 
@@ -588,8 +570,8 @@ if __name__ == "__main__":
             print('step = {0}: loss = {1}'.format(step, train_loss))
 
         if step % eval_interval == 0:
-            avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
             rnd_return = compute_avg_return(eval_env, random_policy, num_eval_episodes)
+            avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
             print('step = {0}: Average Return = {1}'.format(step, avg_return))
             returns.append(avg_return)
             rnd_returns.append(rnd_return)
@@ -597,12 +579,16 @@ if __name__ == "__main__":
             # ~~~~~~~ CHECK THAT MES RESET DOESN'T AFFECT REWARD
             for i in range(num_sats):
                 c = chr(i+97)
-                cov_returns[c].append(filtering(num_sats, simLength, satAERMesT[c], satECIMesT[c]))
-            print('Total Cov: {0}'.format(np.sum(cov_returns)))
+                if satVisCheck[c]:
+                    print('Measurements: {0}'.format(np.count_nonzero(satECIMesT[c])))
+                    cov_returns[c].append(filtering(c, simLength, satAERMesT[c], satECIMesT[c]))
+                # print(satAERMesT[c], satECIMesT[c])
+            # print('Total Cov: {0}'.format(np.sum(cov_returns)))
 
     # @test {"skip": true}
 
     iterations = range(0, num_iterations + 1, eval_interval)
+    plt.figure()
     plt.plot(iterations, returns, label='DQN Policy')
     plt.plot(iterations, rnd_returns, label='Random Policy')
     plt.legend()
@@ -610,8 +596,31 @@ if __name__ == "__main__":
     plt.xlabel('Iterations')
     plt.show()
 
+    # cov_sum = np.zeros((1, len(iterations)))
+    # for i in range(num_sats):
+    #     c = chr(i+97)
+    #     if satVisCheck:
+    #         cov_sum[i] += np.sum(cov_returns[c])
+
     plt.figure()
-    for c in range(num_sats):
+    for i in range(num_sats):
         c = chr(i + 97)
-        plt.plot(iterations, cov_returns[c][:])
+        if satVisCheck[c]:
+            plt.plot(iterations, cov_returns[c])
+    # plt.plot(iterations, cov_sum)
+    plt.yscale('log')
+    plt.show()
+
+    cov_total = np.zeros((len(iterations), 1))
+    for i in range(len(iterations)):
+        for j in range(num_sats):
+            c = chr(j + 97)
+            if satVisCheck[c]:
+                cov_total[i] += cov_returns[c][i]
+
+    plt.figure()
+    plt.plot(iterations[1:], cov_total[1:])
+    plt.ylabel('Sum of Covariance Traces')
+    plt.xlabel('Iterations')
+    # plt.yscale('log')
     plt.show()
