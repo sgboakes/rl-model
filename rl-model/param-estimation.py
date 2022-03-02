@@ -221,10 +221,10 @@ def generate_measurements(num_sats, simLength):
                           [radArr[i] * cos(omegaArr[i] * (j + 1) * stepLength)]], dtype='float64')
 
             satECI[c][:, j] = (v @ cos(thetaArr[i])) + (np.cross(kArr[i, :].T, v.T) * sin(thetaArr[i])) + (
-                    kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
+                               kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
 
             satAER[c][:, j:j+1] = Transformations.ECItoAER(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
-                                                             sensLLA[1])
+                                                           sensLLA[1])
 
             if trans_earth:
                 satAERCheck[c][:, j:j+1] = satAER[c][:, j:j+1]
@@ -537,11 +537,13 @@ if __name__ == "__main__":
     covState = {chr(i + 97): np.zeros((6, 6)) for i in range(num_sats)}
     cov_init = 0
     cov_returns = {chr(i+97): [] for i in range(num_sats)}
+    cov_rnd_returns = {chr(i+97): [] for i in range(num_sats)}
     for i in range(num_sats):
         c = chr(i+97)
         covState[c] = 1e10 * np.identity(6)
         cov_init += np.trace(covState[c])
         cov_returns[c] = [cov_init]
+        cov_rnd_returns[c] = [cov_init]
 
     # Reset the environment.
     time_step = train_py_env.reset()
@@ -570,22 +572,24 @@ if __name__ == "__main__":
             print('step = {0}: loss = {1}'.format(step, train_loss))
 
         if step % eval_interval == 0:
+            # Random Policy Output
             rnd_return = compute_avg_return(eval_env, random_policy, num_eval_episodes)
-            avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-            print('step = {0}: Average Return = {1}'.format(step, avg_return))
-            returns.append(avg_return)
             rnd_returns.append(rnd_return)
-
-            # ~~~~~~~ CHECK THAT MES RESET DOESN'T AFFECT REWARD
             for i in range(num_sats):
                 c = chr(i+97)
                 if satVisCheck[c]:
-                    print('Measurements: {0}'.format(np.count_nonzero(satECIMesT[c])))
-                    cov_returns[c].append(filtering(c, simLength, satAERMesT[c], satECIMesT[c]))
-                # print(satAERMesT[c], satECIMesT[c])
-            # print('Total Cov: {0}'.format(np.sum(cov_returns)))
+                    # print('Measurements: {0}'.format(np.count_nonzero(satECIMesT[c])))
+                    cov_rnd_returns[c].append(filtering(c, simLength, satAERMesT[c], satECIMesT[c]))
 
-    # @test {"skip": true}
+            # Agent Policy Output
+            avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
+            returns.append(avg_return)
+            print('step = {0}: Average Return = {1}'.format(step, avg_return))
+            for i in range(num_sats):
+                c = chr(i+97)
+                if satVisCheck[c]:
+                    # print('Measurements: {0}'.format(np.count_nonzero(satECIMesT[c])))
+                    cov_returns[c].append(filtering(c, simLength, satAERMesT[c], satECIMesT[c]))
 
     iterations = range(0, num_iterations + 1, eval_interval)
     plt.figure()
@@ -596,31 +600,49 @@ if __name__ == "__main__":
     plt.xlabel('Iterations')
     plt.show()
 
-    # cov_sum = np.zeros((1, len(iterations)))
-    # for i in range(num_sats):
-    #     c = chr(i+97)
-    #     if satVisCheck:
-    #         cov_sum[i] += np.sum(cov_returns[c])
-
     plt.figure()
     for i in range(num_sats):
         c = chr(i + 97)
         if satVisCheck[c]:
             plt.plot(iterations, cov_returns[c])
-    # plt.plot(iterations, cov_sum)
     plt.yscale('log')
+    plt.ylabel('Trace(P), Agent Policy')
+    plt.xlabel('Iterations')
+    plt.show()
+
+    plt.figure()
+    for i in range(num_sats):
+        c = chr(i + 97)
+        if satVisCheck[c]:
+            plt.plot(iterations, cov_rnd_returns[c])
+    plt.yscale('log')
+    plt.ylabel('Trace(P), Random Policy')
+    plt.xlabel('Iterations')
     plt.show()
 
     cov_total = np.zeros((len(iterations), 1))
+    cov_median = np.zeros((len(iterations), 1))
+    # cov_temp = []
     for i in range(len(iterations)):
+        cov_temp = []
         for j in range(num_sats):
             c = chr(j + 97)
             if satVisCheck[c]:
                 cov_total[i] += cov_returns[c][i]
+                cov_temp.append(cov_returns[c][i])
+
+        cov_median[i] = np.median(cov_temp)
 
     plt.figure()
     plt.plot(iterations[1:], cov_total[1:])
-    plt.ylabel('Sum of Covariance Traces')
+    plt.ylabel('$\Sigma$ Trace(P)')
     plt.xlabel('Iterations')
     # plt.yscale('log')
     plt.show()
+
+    # plt.figure()
+    # plt.plot(iterations[1:], cov_median[1:])
+    # plt.ylabel('Median Tr(Covariance)')
+    # plt.xlabel('Iterations')
+    # # plt.yscale('log')
+    # plt.show()
