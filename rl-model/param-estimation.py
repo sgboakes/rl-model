@@ -18,6 +18,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pysatellite import Transformations, Functions, Filters
 import pysatellite.config as cfg
+import pandas as pd
+from sys import exit
 
 import reverb
 from tf_agents.environments import py_environment
@@ -271,7 +273,7 @@ def generate_measurements(num_sats, simLength):
 def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
 
     sat_state = np.zeros((6, 1))
-    cov_state = np.float64(1e16) * np.identity(6)
+    cov_state = np.float64(1e12) * np.identity(6)
 
     sat_state[0:3] = np.reshape(satECIMes[c][:, 0], (3, 1))
 
@@ -620,25 +622,25 @@ if __name__ == "__main__":
     plt.xlabel('Iterations')
     plt.show()
 
-    cov_total = np.zeros((len(iterations), 1))
-    cov_median = np.zeros((len(iterations), 1))
-    # cov_temp = []
-    for i in range(len(iterations)):
-        cov_temp = []
-        for j in range(num_sats):
-            c = chr(j + 97)
-            if satVisCheck[c]:
-                cov_total[i] += cov_returns[c][i]
-                cov_temp.append(cov_returns[c][i])
-
-        cov_median[i] = np.median(cov_temp)
-
-    plt.figure()
-    plt.plot(iterations[1:], cov_total[1:])
-    plt.ylabel('$\Sigma$ Trace(P)')
-    plt.xlabel('Iterations')
-    # plt.yscale('log')
-    plt.show()
+    # cov_total = np.zeros((len(iterations), 1))
+    # cov_median = np.zeros((len(iterations), 1))
+    # # cov_temp = []
+    # for i in range(len(iterations)):
+    #     cov_temp = []
+    #     for j in range(num_sats):
+    #         c = chr(j + 97)
+    #         if satVisCheck[c]:
+    #             cov_total[i] += cov_returns[c][i]
+    #             cov_temp.append(cov_returns[c][i])
+    #
+    #     cov_median[i] = np.median(cov_temp)
+    #
+    # plt.figure()
+    # plt.plot(iterations[1:], cov_total[1:])
+    # plt.ylabel('$\Sigma$ Trace(P)')
+    # plt.xlabel('Iterations')
+    # # plt.yscale('log')
+    # plt.show()
 
     # plt.figure()
     # plt.plot(iterations[1:], cov_median[1:])
@@ -646,3 +648,23 @@ if __name__ == "__main__":
     # plt.xlabel('Iterations')
     # # plt.yscale('log')
     # plt.show()
+    save_check = input("Do you want to save output to csv file? (y/n) \n")
+    if save_check == ('n' or 'N'):
+        exit(0)
+
+    df_reward = pd.DataFrame()
+    df_reward['Iterations'] = iterations
+    df_reward['Returns'] = returns
+    df_reward['Rnd_Returns'] = rnd_returns
+
+    df_reward.to_csv('Reward-Returns-1.csv')
+
+    df_cov = pd.DataFrame()
+    df_cov['Iterations'] = iterations
+    for i in range(num_sats):
+        c = chr(i+97)
+        if satVisCheck[c]:
+            df_cov['Cov_{c}'.format(c=c)] = cov_returns[c]
+            df_cov['Cov_rnd_{c}'.format(c=c)] = cov_rnd_returns[c]
+
+    df_cov.to_csv('Covariance-Returns-1.csv')

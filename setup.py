@@ -11,7 +11,7 @@ setup(name='rl-model',
       maintainer_email='sgboakes@liverpool.ac.uk',
       url='https://github.com/sgboakes/rl-model',
       install_requires=[
-          'numpy', 'tf-agents[reverb]', 'pysatellite', 'matplotlib', 'tensorflow'
+          'numpy', 'tf-agents[reverb]', 'pysatellite', 'matplotlib', 'tensorflow', 'pandas'
       ],
       pbr=True,
       )
