@@ -60,3 +60,4 @@ for i in range(num_sats):
 plt.ylabel('$\ln(tr(P))$, Random Policy')
 plt.xlabel('Iterations')
 plt.show()
+

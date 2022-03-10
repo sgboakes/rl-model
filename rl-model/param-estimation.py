@@ -558,6 +558,10 @@ if __name__ == "__main__":
         [rb_observer],
         max_steps=collect_steps_per_iteration)
 
+    satAERMesTF = {chr(i+97): np.zeros((3, simLength)) for i in range(num_sats)}
+    satECIMesTF = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    satAERMesTFR = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    satECIMesTFR = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
     for _ in range(num_iterations):
         # print('Iteration: {i}'.format(i=_))
         # Collect a few steps and save to the replay buffer.
@@ -582,6 +586,9 @@ if __name__ == "__main__":
                 if satVisCheck[c]:
                     # print('Measurements: {0}'.format(np.count_nonzero(satECIMesT[c])))
                     cov_rnd_returns[c].append(filtering(c, simLength, satAERMesT[c], satECIMesT[c]))
+                    if step == 20000:
+                        satAERMesTFR[c] = satAERMesT[c]
+                        satECIMesTFR[c] = satECIMesT[c]
 
             # Agent Policy Output
             avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
@@ -592,6 +599,9 @@ if __name__ == "__main__":
                 if satVisCheck[c]:
                     # print('Measurements: {0}'.format(np.count_nonzero(satECIMesT[c])))
                     cov_returns[c].append(filtering(c, simLength, satAERMesT[c], satECIMesT[c]))
+                    if step == 20000:
+                        satAERMesTF[c] = satAERMesT[c]
+                        satECIMesTF[c] = satECIMesT[c]
 
     iterations = range(0, num_iterations + 1, eval_interval)
     plt.figure()
@@ -648,23 +658,142 @@ if __name__ == "__main__":
     # plt.xlabel('Iterations')
     # # plt.yscale('log')
     # plt.show()
-    save_check = input("Do you want to save output to csv file? (y/n) \n")
-    if save_check == ('n' or 'N'):
-        exit(0)
 
-    df_reward = pd.DataFrame()
-    df_reward['Iterations'] = iterations
-    df_reward['Returns'] = returns
-    df_reward['Rnd_Returns'] = rnd_returns
-
-    df_reward.to_csv('Reward-Returns-5.csv')
-
-    df_cov = pd.DataFrame()
-    df_cov['Iterations'] = iterations
+    cov_final = {chr(i + 97): [] for i in range(num_sats)}
+    cov_rnd_final = {chr(i + 97): [] for i in range(num_sats)}
+    # Random Cov Results
     for i in range(num_sats):
-        c = chr(i+97)
-        if satVisCheck[c]:
-            df_cov['Cov_{c}'.format(c=c)] = cov_returns[c]
-            df_cov['Cov_rnd_{c}'.format(c=c)] = cov_rnd_returns[c]
+        c = chr(i + 97)
+        cov_final[c] = []
+        sat_state = np.zeros((6, 1))
+        cov_state = np.float64(1e12) * np.identity(6)
 
-    df_cov.to_csv('Covariance-Returns-5.csv')
+        sat_state[0:3] = np.reshape(satECIMes[c][:, 0], (3, 1))
+
+        # Process noise
+        std_ang = np.float64(1e-5)
+        coef_a = np.float64(0.25 * stepLength ** 4.0 * std_ang ** 2.0)
+        coef_b = np.float64(stepLength ** 2.0 * std_ang ** 2.0)
+        coef_c = np.float64(0.5 * stepLength ** 3.0 * std_ang ** 2.0)
+
+        proc_noise = np.array([[coef_a, 0, 0, coef_c, 0, 0],
+                               [0, coef_a, 0, 0, coef_c, 0],
+                               [0, 0, coef_a, 0, 0, coef_c],
+                               [coef_c, 0, 0, coef_b, 0, 0],
+                               [0, coef_c, 0, 0, coef_b, 0],
+                               [0, 0, coef_c, 0, 0, coef_b]],
+                              dtype='float64')
+
+        ang_meas_dev, range_meas_dev = 1e-6, 20
+
+        cov_aer = np.array([[(ang_meas_dev * 180 / pi) ** 2, 0, 0],
+                            [0, (ang_meas_dev * 180 / pi) ** 2, 0],
+                            [0, 0, range_meas_dev ** 2]],
+                           dtype='float64')
+
+        measure_matrix = np.append(np.identity(3), np.zeros((3, 3)), axis=1)
+
+        delta = 1e-6
+        for j in range(simLength):
+            func_params = {
+                "stepLength": stepLength,
+                "count": j + 1,
+                "sensECEF": sensECEF,
+                "sensLLA[0]": sensLLA[0],
+                "sensLLA[1]": sensLLA[1]}
+
+            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMesTFR[c][:, j], (3, 1)),
+                                                 func_params, delta)
+
+            cov_eci = jacobian @ cov_aer @ jacobian.T
+
+            state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
+
+            sat_state, cov_state = Filters.EKF_ECI(sat_state, cov_state, satECIMesTFR[c][:, j], state_trans_matrix,
+                                                   measure_matrix, cov_eci, proc_noise)
+
+            cov_rnd_final[c].append(np.trace(cov_state))
+
+    # Agent Cov Results
+    for i in range(num_sats):
+        c = chr(i + 97)
+        cov_final[c] = []
+        sat_state = np.zeros((6, 1))
+        cov_state = np.float64(1e12) * np.identity(6)
+
+        sat_state[0:3] = np.reshape(satECIMes[c][:, 0], (3, 1))
+
+        # Process noise
+        std_ang = np.float64(1e-5)
+        coef_a = np.float64(0.25 * stepLength ** 4.0 * std_ang ** 2.0)
+        coef_b = np.float64(stepLength ** 2.0 * std_ang ** 2.0)
+        coef_c = np.float64(0.5 * stepLength ** 3.0 * std_ang ** 2.0)
+
+        proc_noise = np.array([[coef_a, 0, 0, coef_c, 0, 0],
+                               [0, coef_a, 0, 0, coef_c, 0],
+                               [0, 0, coef_a, 0, 0, coef_c],
+                               [coef_c, 0, 0, coef_b, 0, 0],
+                               [0, coef_c, 0, 0, coef_b, 0],
+                               [0, 0, coef_c, 0, 0, coef_b]],
+                              dtype='float64')
+
+        ang_meas_dev, range_meas_dev = 1e-6, 20
+
+        cov_aer = np.array([[(ang_meas_dev * 180 / pi) ** 2, 0, 0],
+                            [0, (ang_meas_dev * 180 / pi) ** 2, 0],
+                            [0, 0, range_meas_dev ** 2]],
+                           dtype='float64')
+
+        measure_matrix = np.append(np.identity(3), np.zeros((3, 3)), axis=1)
+
+        delta = 1e-6
+        for j in range(simLength):
+            func_params = {
+                "stepLength": stepLength,
+                "count": j + 1,
+                "sensECEF": sensECEF,
+                "sensLLA[0]": sensLLA[0],
+                "sensLLA[1]": sensLLA[1]}
+
+            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMesTF[c][:, j], (3, 1)),
+                                                 func_params, delta)
+
+            cov_eci = jacobian @ cov_aer @ jacobian.T
+
+            state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
+
+            sat_state, cov_state = Filters.EKF_ECI(sat_state, cov_state, satECIMesTF[c][:, j],
+                                                   state_trans_matrix,
+                                                   measure_matrix, cov_eci, proc_noise)
+
+            cov_final[c].append(np.trace(cov_state))
+
+    save_check = input("Do you want to save output to csv file? (y/n) \n")
+    if save_check == ('y' or 'Y'):
+
+        # df_reward = pd.DataFrame()
+        # df_reward['Iterations'] = iterations
+        # df_reward['Returns'] = returns
+        # df_reward['Rnd_Returns'] = rnd_returns
+        #
+        # df_reward.to_csv('Reward-Returns-5.csv')
+        #
+        # df_cov = pd.DataFrame()
+        # df_cov['Iterations'] = iterations
+        # for i in range(num_sats):
+        #     c = chr(i+97)
+        #     if satVisCheck[c]:
+        #         df_cov['Cov_{c}'.format(c=c)] = cov_returns[c]
+        #         df_cov['Cov_rnd_{c}'.format(c=c)] = cov_rnd_returns[c]
+        #
+        # df_cov.to_csv('Covariance-Returns-5.csv')
+
+        df_cov_fin = pd.DataFrame()
+        df_cov_fin['Steps'] = range(0, simLength)
+        for i in range(num_sats):
+            c = chr(i+97)
+            if satVisCheck[c]:
+                df_cov_fin['Cov_{c}'.format(c=c)] = cov_final[c]
+                df_cov_fin['Cov_Rnd_{c}'.format(c=c)] = cov_rnd_final[c]
+
+        df_cov_fin.to_csv('Covariance-Fin-Returns-5.csv')
