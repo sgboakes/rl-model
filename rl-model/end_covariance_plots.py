@@ -7,7 +7,7 @@ dfs = {}
 num_files = 5
 num_sats = 25
 for i in range(1, num_files+1):
-    dfs[i] = pd.read_csv('Covariance-Fin-Returns-{i}.csv'.format(i=i))
+    dfs[i] = pd.read_csv('Run-Data/Covariance-Fin-Returns-{i}.csv'.format(i=i))
 
 satVisCheck = {chr(i + 97): False for i in range(num_sats)}
 for i in range(num_sats):
@@ -51,7 +51,7 @@ for i in range(num_sats):
         plt.plot(steps, cov_mean[c])
         plt.fill_between(steps, cov_mean[c]-cov_std[c], cov_mean[c]+cov_std[c], alpha=.1)
 plt.xlabel('Step Number')
-plt.ylabel('Tr(P), Agent Policy')
+plt.ylabel('$\ln(tr(P))$, Agent Policy')
 # plt.yscale('log')
 plt.show()
 
@@ -62,6 +62,6 @@ for i in range(num_sats):
         plt.plot(steps, cov_rnd_mean[c])
         plt.fill_between(steps, cov_rnd_mean[c]-cov_rnd_std[c], cov_rnd_mean[c]+cov_rnd_std[c], alpha=.1)
 plt.xlabel('Step Number')
-plt.ylabel('Tr(P), Random Policy')
+plt.ylabel('$\ln(tr(P))$, Random Policy')
 # plt.yscale('log')
 plt.show()
