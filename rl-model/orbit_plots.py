@@ -4,36 +4,36 @@ from pysatellite import Filters, Transformations, Functions
 import pysatellite.config as cfg
 
 
-def generate_measurements(num_sats, simLength):
+def generate_measurements():
 
-    radArr = 7e6 * np.ones((num_sats, 1), dtype='float64')
-    omegaArr = 1 / np.sqrt(radArr ** 3 / mu)
-    thetaArr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
-    kArr = np.ones((num_sats, 3), dtype='float64')
-    kArr[:, :] = 1 / np.sqrt(3)
+    rad_arr = 7e6 * np.ones((num_sats, 1), dtype='float64')
+    omega_arr = 1 / np.sqrt(rad_arr ** 3 / mu)
+    theta_arr = np.array((2 * pi * np.random.rand(num_sats, 1)), dtype='float64')
+    k_arr = np.ones((num_sats, 3), dtype='float64')
+    k_arr[:, :] = 1 / np.sqrt(3)
 
     # Make data structures
-    satECI = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
-    satAER = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_eci = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_aer = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
 
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
-            v = np.array([[radArr[i] * sin(omegaArr[i] * (j + 1) * stepLength)],
+            v = np.array([[rad_arr[i] * sin(omega_arr[i] * (j + 1) * stepLength)],
                           [0],
-                          [radArr[i] * cos(omegaArr[i] * (j + 1) * stepLength)]], dtype='float64')
+                          [rad_arr[i] * cos(omega_arr[i] * (j + 1) * stepLength)]], dtype='float64')
 
-            satECI[c][:, j] = (v @ cos(thetaArr[i])) + (np.cross(kArr[i, :].T, v.T) * sin(thetaArr[i])) + (
-                    kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
+            sat_eci[c][:, j] = (v @ cos(theta_arr[i])) + (np.cross(k_arr[i, :].T, v.T) * sin(theta_arr[i])) + (
+                               k_arr[i, :].T * np.dot(k_arr[i, :].T, v) * (1 - cos(theta_arr[i])))
 
-            satAER[c][:, j:j + 1] = Transformations.ECItoAER(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
-                                                             sensLLA[1])
+            sat_aer[c][:, j:j + 1] = Transformations.ECItoAER(sat_eci[c][:, j], stepLength, j + 1, sensECEF,
+                                                              sensLLA[0], sensLLA[1])
 
             if not trans_earth:
-                if satAER[c][1, j] < 0:
-                    satAER[c][:, j:j + 1] = np.array([[np.nan], [np.nan], [np.nan]])
+                if sat_aer[c][1, j] < 0:
+                    sat_aer[c][:, j:j + 1] = np.array([[np.nan], [np.nan], [np.nan]])
 
-        if np.isnan(satAER[c]).all():
+        if np.isnan(sat_aer[c]).all():
             print('Satellite {s} is not observable'.format(s=c))
 
     # Add small deviations for measurements
@@ -42,23 +42,23 @@ def generate_measurements(num_sats, simLength):
     # sigma = 1/2 * 0.15" for it to be definitely on that pixel
     # Add angle devs to Az/Elev, and range devs to Range
 
-    angMeasDev, rangeMeasDev = 1e-6, 20
+    ang_meas_dev, range_meas_dev = 1e-6, 20
 
-    satAERMes = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_aer_mes = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
     for i in range(num_sats):
         c = chr(i + 97)
-        satAERMes[c][0, :] = satAER[c][0, :] + (angMeasDev * np.random.randn(1, simLength))
-        satAERMes[c][1, :] = satAER[c][1, :] + (angMeasDev * np.random.randn(1, simLength))
-        satAERMes[c][2, :] = satAER[c][2, :] + (rangeMeasDev * np.random.randn(1, simLength))
+        sat_aer_mes[c][0, :] = sat_aer[c][0, :] + (ang_meas_dev * np.random.randn(1, simLength))
+        sat_aer_mes[c][1, :] = sat_aer[c][1, :] + (ang_meas_dev * np.random.randn(1, simLength))
+        sat_aer_mes[c][2, :] = sat_aer[c][2, :] + (range_meas_dev * np.random.randn(1, simLength))
 
-    satECIMes = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_eci_mes = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
-            satECIMes[c][:, j:j + 1] = Transformations.AERtoECI(satAERMes[c][:, j], stepLength, j + 1, sensECEF,
-                                                                sensLLA[0], sensLLA[1])
+            sat_eci_mes[c][:, j:j + 1] = Transformations.AERtoECI(sat_aer_mes[c][:, j], stepLength, j + 1, sensECEF,
+                                                                  sensLLA[0], sensLLA[1])
 
-    return satAER, satECI, satAERMes, satECIMes
+    return sat_aer, sat_eci, sat_aer_mes, sat_eci_mes
 
 
 if __name__ == "__main__":
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     num_sats = 25
     # global satAER, satECI, satAERMes, satECIMes
-    satAER, satECI, satAERMes, satECIMes = generate_measurements(num_sats, simLength)
+    satAER, satECI, satAERMes, satECIMes = generate_measurements()
 
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
     ax.set(theta_zero_location='N', theta_direction=-1)

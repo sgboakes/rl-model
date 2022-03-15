@@ -83,7 +83,7 @@ if __name__ == "__main__":
     sensECEF = Transformations.LLAtoECEF(sensLLA)
     sensECEF.shape = (3, 1)
 
-    simLength = cfg.simLength
+    # simLength = cfg.simLength
     simLength = 20
     stepLength = cfg.stepLength
 
@@ -573,7 +573,7 @@ iterator = iter(dataset)
 # except:
 #   pass
 
-# (Optional) Optimize by wrapping some of the code in a graph using TF function.
+# (Optional) Optimize by wrapping some code in a graph using TF function.
 agent.train = common.function(agent.train)
 
 # Reset the train step.

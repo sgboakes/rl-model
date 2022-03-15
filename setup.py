@@ -7,7 +7,7 @@ from setuptools import setup
 
 # setup(setup_requires=["pbr"],pbr=True)
 setup(name='rl-model',
-      maintainer='Bendict Oakes',
+      maintainer='Benedict Oakes',
       maintainer_email='sgboakes@liverpool.ac.uk',
       url='https://github.com/sgboakes/rl-model',
       install_requires=[

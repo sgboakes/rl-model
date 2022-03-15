@@ -82,7 +82,7 @@ if __name__ == "__main__":
     sensECEF = Transformations.LLAtoECEF(sensLLA)
     sensECEF.shape = (3, 1)
 
-    simLength = cfg.simLength
+    # simLength = cfg.simLength
     simLength = 20
     stepLength = cfg.stepLength
 
@@ -352,7 +352,8 @@ class SatEnv(py_environment.PyEnvironment, ABC):
             if abs(satAER[c][0, j] - self._sens_state[0]) < 0.5 and abs(satAER[c][1, j] - self._sens_state[1]) < 0.5:
                 reward += 1
 
-            distance[i] = np.sqrt(abs(satAER[c][0, j] - self._sens_state[0])**2 + abs(satAER[c][1, j] - self._sens_state[1])**2)
+            distance[i] = np.sqrt(abs(satAER[c][0, j] - self._sens_state[0])**2 + abs(satAER[c][1, j] -
+                                                                                      self._sens_state[1])**2)
 
         distance = np.array(distance, dtype=np.float32)
 
@@ -535,7 +536,7 @@ iterator = iter(dataset)
 # except:
 #   pass
 
-# (Optional) Optimize by wrapping some of the code in a graph using TF function.
+# (Optional) Optimize by wrapping some code in a graph using TF function.
 agent.train = common.function(agent.train)
 
 # Reset the train step.

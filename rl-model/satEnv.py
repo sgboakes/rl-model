@@ -70,8 +70,7 @@ class satEnv(py_environment.PyEnvironment):
         self._state = 0
         self._episode_ended = False
         self._episode_duration = 0
-        import pdb;
-        pdb.set_trace()  # debugging
+        import pdb; pdb.set_trace()  # debugging
         self._max_episode_length = 20
 
     def action_spec(self):

@@ -1,15 +1,7 @@
 from __future__ import absolute_import, division, print_function
-
-import base64
-import IPython
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-#import PIL.Image
-#import pyvirtualdisplay
 import reverb
-
-import tensorflow as tf
 
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import py_driver
@@ -28,7 +20,7 @@ from tf_agents.utils import common
 
 import abc
 import tensorflow as tf
-import numpy as np
+
 from numpy import int32, float32
 
 from tf_agents.environments import py_environment
@@ -41,12 +33,12 @@ from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
 
 
-# ~~~~~~~~~~~~~~~ HYPERPARAMETERS ~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~ HYPER-PARAMETERS ~~~~~~~~~~~~~~~
 
-num_iterations = 20000 # @param {type:"integer"}
+num_iterations = 20000  # @param {type:"integer"}
 
 initial_collect_steps = 100  # @param {type:"integer"}
-collect_steps_per_iteration =   1# @param {type:"integer"}
+collect_steps_per_iteration = 1  # @param {type:"integer"}
 replay_buffer_max_length = 100000  # @param {type:"integer"}
 
 batch_size = 64  # @param {type:"integer"}
@@ -57,6 +49,7 @@ num_eval_episodes = 10  # @param {type:"integer"}
 eval_interval = 1000  # @param {type:"integer"}
 
 # ~~~~~~~~~~~~~~~ ENVIRONMENT ~~~~~~~~~~~~~~~
+
 
 class PyEnvironment(object):
 
@@ -189,16 +182,20 @@ num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 # Define a helper function to create Dense layers configured with the right
 # activation and kernel initializer.
+
+
 def dense_layer(num_units):
-  return tf.keras.layers.Dense(
-      num_units,
-      activation=tf.keras.activations.relu,
-      kernel_initializer=tf.keras.initializers.VarianceScaling(
-          scale=2.0, mode='fan_in', distribution='truncated_normal'))
+    return tf.keras.layers.Dense(
+        num_units,
+        activation=tf.keras.activations.relu,
+        kernel_initializer=tf.keras.initializers.VarianceScaling(
+            scale=2.0, mode='fan_in', distribution='truncated_normal'))
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
 # its output.
+
+
 dense_layers = [dense_layer(num_units) for num_units in fc_layer_params]
 q_values_layer = tf.keras.layers.Dense(
     num_actions,
@@ -306,7 +303,7 @@ iterator = iter(dataset)
 # except:
 #     pass
 
-# (Optional) Optimize by wrapping some of the code in a graph using TF function.
+# (Optional) Optimize by wrapping some code in a graph using TF function.
 agent.train = common.function(agent.train)
 
 # Reset the train step.

@@ -65,7 +65,7 @@ if __name__ == "__main__":
     sensECEF = Transformations.LLAtoECEF(sensLLA)
     sensECEF.shape = (3, 1)
 
-    simLength = cfg.simLength
+    # simLength = cfg.simLength
     simLength = 20
     stepLength = cfg.stepLength
 
@@ -301,7 +301,7 @@ class SatEnv(py_environment.PyEnvironment):
         self._episode_ended = False
         self._episode_duration = 0
         # import pdb; pdb.set_trace()
-        return ts.restart(np.array([0.,0.,0.,0.], dtype=np.float32))
+        return ts.restart(np.array([0., 0., 0., 0.], dtype=np.float32))
 
     def _step(self, action):
 
@@ -317,8 +317,8 @@ class SatEnv(py_environment.PyEnvironment):
         for i in range(num_sats):
             c = chr(i + 97)
             error[i] = np.sqrt(err_X_ECI[c][self._episode_duration]**2 +
-                             err_Y_ECI[c][self._episode_duration]**2 +
-                             err_Z_ECI[c][self._episode_duration]**2)
+                               err_Y_ECI[c][self._episode_duration]**2 +
+                               err_Z_ECI[c][self._episode_duration]**2)
 
         # Make sure episodes don't go on forever.
         if action == error.index(max(error)):
@@ -514,8 +514,6 @@ dataset = replay_buffer.as_dataset(
     sample_batch_size=batch_size,
     num_steps=2).prefetch(3)
 
-dataset
-
 iterator = iter(dataset)
 print(iterator)
 
@@ -526,7 +524,7 @@ print(iterator)
 # except:
 #   pass
 
-# (Optional) Optimize by wrapping some of the code in a graph using TF function.
+# (Optional) Optimize by wrapping some code in a graph using TF function.
 agent.train = common.function(agent.train)
 
 # Reset the train step.
