@@ -13,39 +13,23 @@ from __future__ import print_function
 import abc
 from abc import ABC
 
-import pysatellite.Functions
 import tensorflow as tf
 import numpy as np
-from numpy import int32, float32
 
 from tf_agents.environments import py_environment
-from tf_agents.environments import tf_environment
-from tf_agents.environments import tf_py_environment
 from tf_agents.environments import utils
 from tf_agents.specs import array_spec
-from tf_agents.environments import wrappers
-from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
-# import base64
-# import imageio
-# import IPython
-import matplotlib
 import matplotlib.pyplot as plt
-# import PIL.Image
-# import pyvirtualdisplay
 import reverb
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import py_driver
-from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
-from tf_agents.eval import metric_utils
-from tf_agents.metrics import tf_metrics
 from tf_agents.networks import sequential
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
-from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 from pysatellite import Transformations, Functions, Filters
@@ -80,7 +64,7 @@ if __name__ == "__main__":
     sensAlt = np.float64(2390)
     sensLLA = np.array([[sensLat * pi / 180], [sensLon * pi / 180], [sensAlt]], dtype='float64')
     # sensLLA = np.array([[pi/2], [0], [1000]], dtype='float64')
-    sensECEF = Transformations.LLAtoECEF(sensLLA)
+    sensECEF = Transformations.lla_to_ecef(sensLLA)
     sensECEF.shape = (3, 1)
 
     # simLength = cfg.simLength
@@ -120,8 +104,8 @@ if __name__ == "__main__":
             satECI[c][:, j] = (v @ cos(thetaArr[i])) + (np.cross(kArr[i, :].T, v.T) * sin(thetaArr[i])) + (
                         kArr[i, :].T * np.dot(kArr[i, :].T, v) * (1 - cos(thetaArr[i])))
 
-            satAER[c][:, j:j + 1] = Transformations.ECItoAER(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
-                                                             sensLLA[1])
+            satAER[c][:, j:j + 1] = Transformations.eci_to_aer(satECI[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
+                                                               sensLLA[1])
 
             if not trans_earth:
                 if satAER[c][1, j] < 0:
@@ -149,8 +133,8 @@ if __name__ == "__main__":
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
-            satECIMes[c][:, j:j + 1] = Transformations.AERtoECI(satAERMes[c][:, j], stepLength, j+1, sensECEF,
-                                                                sensLLA[0], sensLLA[1])
+            satECIMes[c][:, j:j + 1] = Transformations.aer_to_eci(satAERMes[c][:, j], stepLength, j+1, sensECEF,
+                                                                  sensLLA[0], sensLLA[1])
 
     satState = {chr(i + 97): np.zeros((6, 1)) for i in range(num_sats)}
     for i in range(num_sats):
@@ -235,7 +219,7 @@ if __name__ == "__main__":
 
             stateTransMatrix = Functions.jacobian_finder("kepler", satState[c], [], delta)
 
-            satState[c], covState[c] = Filters.EKF_ECI(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
+            satState[c], covState[c] = Filters.ekf(satState[c], covState[c], satECIMes[c][:, j], stateTransMatrix,
                                                        measureMatrix, covECI, procNoise)
     #
     #         totalStates[c][:, j] = np.reshape(satState[c], 6)
@@ -247,6 +231,9 @@ if __name__ == "__main__":
 
 
 class PyEnvironment(object):
+
+    def __init__(self):
+        self._current_time_step = None
 
     def reset(self):
         """Return initial_time_step."""
@@ -317,9 +304,9 @@ class SatEnv(py_environment.PyEnvironment, ABC):
 
         reward = 0
         distance = [None] * num_sats
-        tr_prior = [0.] * num_sats  # Trace of prior covariance
-        tr_posterior = [0.] * num_sats  # Trace of posterior covariance
-        info_gain = [0.] * num_sats  # Information gain
+        # tr_prior = [0.] * num_sats  # Trace of prior covariance
+        # tr_posterior = [0.] * num_sats  # Trace of posterior covariance
+        # info_gain = [0.] * num_sats  # Information gain
         j = self._current_episode
         if self._episode_ended:
             # The last action ended the episode. Ignore the current action and start

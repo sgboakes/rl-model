@@ -39,16 +39,19 @@ from tf_agents.utils import common
 
 class PyEnvironment(object):
 
+    def __init__(self):
+        self._current_time_step = None
+
     def reset(self):
         """Return initial_time_step."""
         self._current_time_step = self._reset()
         return self._current_time_step
 
-    def step(self, action):
+    def step(self, a):
         """Apply action and return new time_step."""
         if self._current_time_step is None:
             return self.reset()
-        self._current_time_step = self._step(action)
+        self._current_time_step = self._step(a)
         return self._current_time_step
 
     def current_time_step(self):
@@ -70,7 +73,7 @@ class PyEnvironment(object):
         """Return initial_time_step."""
 
     @abc.abstractmethod
-    def _step(self, action):
+    def _step(self, a):
         """Apply action and return new time_step."""
 
 
@@ -180,7 +183,8 @@ class SatEnv(py_environment.PyEnvironment, ABC):
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
-
+    time_step = None
+    episode_return = None
     total_return = 0.0
     for _ in range(num_episodes):
 
@@ -195,6 +199,16 @@ def compute_avg_return(environment, policy, num_episodes=10):
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
+
+
+def dense_layer(num_units):
+    # Define a helper function to create Dense layers configured with the right
+    # activation and kernel initializer.
+    return tf.keras.layers.Dense(
+        num_units,
+        activation=tf.keras.activations.relu,
+        kernel_initializer=tf.keras.initializers.VarianceScaling(
+                            scale=2.0, mode='fan_in', distribution='truncated_normal'))
 
 
 def generate_measurements():
@@ -221,8 +235,8 @@ def generate_measurements():
             sat_eci[c][:, j] = (v @ cos(theta_arr[i])) + (np.cross(k_arr[i, :].T, v.T) * sin(theta_arr[i])) + (
                                k_arr[i, :].T * np.dot(k_arr[i, :].T, v) * (1 - cos(theta_arr[i])))
 
-            sat_aer[c][:, j:j+1] = Transformations.ECItoAER(sat_eci[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
-                                                            sensLLA[1])
+            sat_aer[c][:, j:j+1] = Transformations.eci_to_aer(sat_eci[c][:, j], stepLength, j + 1, sensECEF, sensLLA[0],
+                                                              sensLLA[1])
 
             if trans_earth:
                 sat_aer_check[c][:, j:j+1] = sat_aer[c][:, j:j+1]
@@ -260,10 +274,10 @@ def generate_measurements():
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
-            sat_eci_mes[c][:, j:j + 1] = Transformations.AERtoECI(sat_aer_mes[c][:, j], stepLength, j + 1, sensECEF,
-                                                                  sensLLA[0], sensLLA[1])
+            sat_eci_mes[c][:, j:j + 1] = Transformations.aer_to_eci(sat_aer_mes[c][:, j], stepLength, j + 1, sensECEF,
+                                                                    sensLLA[0], sensLLA[1])
 
-    return satAER, satECI, satAERMes, satECIMes
+    return sat_aer, sat_eci, sat_aer_mes, sat_eci_mes
 
 
 def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
@@ -306,13 +320,13 @@ def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
             "sensLLA[0]": sensLLA[0],
             "sensLLA[1]": sensLLA[1]}
 
-        jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(sat_aer_mes[:, j], (3, 1)), func_params, delta)
+        jacobian = Functions.jacobian_finder("aer_to_eci", np.reshape(sat_aer_mes[:, j], (3, 1)), func_params, delta)
 
         cov_eci = jacobian @ cov_aer @ jacobian.T
 
         state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
 
-        sat_state, cov_state = Filters.EKF_ECI(sat_state, cov_state, sat_eci_mes[:, j], state_trans_matrix,
+        sat_state, cov_state = Filters.ekf(sat_state, cov_state, sat_eci_mes[:, j], state_trans_matrix,
                                                measure_matrix, cov_eci, proc_noise)
 
     return np.trace(cov_state)
@@ -347,7 +361,7 @@ if __name__ == "__main__":
     sensAlt = np.float64(2390)
     sensLLA = np.array([[sensLat * pi / 180], [sensLon * pi / 180], [sensAlt]], dtype='float64')
     # sensLLA = np.array([[pi/2], [0], [1000]], dtype='float64')
-    sensECEF = Transformations.LLAtoECEF(sensLLA)
+    sensECEF = Transformations.lla_to_ecef(sensLLA)
     sensECEF.shape = (3, 1)
 
     # simLength = cfg.simLength
@@ -419,16 +433,6 @@ if __name__ == "__main__":
     fc_layer_params = (100, 50)
     action_tensor_spec = tensor_spec.from_spec(env.action_spec())
     num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
-
-    # Define a helper function to create Dense layers configured with the right
-    # activation and kernel initializer.
-
-    def dense_layer(num_units):
-        return tf.keras.layers.Dense(
-            num_units,
-            activation=tf.keras.activations.relu,
-            kernel_initializer=tf.keras.initializers.VarianceScaling(
-                                scale=2.0, mode='fan_in', distribution='truncated_normal'))
 
     # QNetwork consists of a sequence of Dense layers followed by a dense layer
     # with `num_actions` units to generate one q_value per available action as
@@ -628,33 +632,6 @@ if __name__ == "__main__":
     plt.xlabel('Iterations')
     plt.show()
 
-    # cov_total = np.zeros((len(iterations), 1))
-    # cov_median = np.zeros((len(iterations), 1))
-    # # cov_temp = []
-    # for i in range(len(iterations)):
-    #     cov_temp = []
-    #     for j in range(num_sats):
-    #         c = chr(j + 97)
-    #         if satVisCheck[c]:
-    #             cov_total[i] += cov_returns[c][i]
-    #             cov_temp.append(cov_returns[c][i])
-    #
-    #     cov_median[i] = np.median(cov_temp)
-    #
-    # plt.figure()
-    # plt.plot(iterations[1:], cov_total[1:])
-    # plt.ylabel('$\Sigma$ Trace(P)')
-    # plt.xlabel('Iterations')
-    # # plt.yscale('log')
-    # plt.show()
-
-    # plt.figure()
-    # plt.plot(iterations[1:], cov_median[1:])
-    # plt.ylabel('Median Tr(Covariance)')
-    # plt.xlabel('Iterations')
-    # # plt.yscale('log')
-    # plt.show()
-
     cov_final = {chr(i + 97): [] for i in range(num_sats)}
     cov_rnd_final = {chr(i + 97): [] for i in range(num_sats)}
     # Random Cov Results
@@ -698,14 +675,14 @@ if __name__ == "__main__":
                 "sensLLA[0]": sensLLA[0],
                 "sensLLA[1]": sensLLA[1]}
 
-            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMesTFR[c][:, j], (3, 1)),
+            jacobian = Functions.jacobian_finder("aer_to_eci", np.reshape(satAERMesTFR[c][:, j], (3, 1)),
                                                  func_params, delta)
 
             cov_eci = jacobian @ cov_aer @ jacobian.T
 
             state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
 
-            sat_state, cov_state = Filters.EKF_ECI(sat_state, cov_state, satECIMesTFR[c][:, j], state_trans_matrix,
+            sat_state, cov_state = Filters.ekf(sat_state, cov_state, satECIMesTFR[c][:, j], state_trans_matrix,
                                                    measure_matrix, cov_eci, proc_noise)
 
             cov_rnd_final[c].append(np.trace(cov_state))
@@ -751,14 +728,14 @@ if __name__ == "__main__":
                 "sensLLA[0]": sensLLA[0],
                 "sensLLA[1]": sensLLA[1]}
 
-            jacobian = Functions.jacobian_finder("AERtoECI", np.reshape(satAERMesTF[c][:, j], (3, 1)),
+            jacobian = Functions.jacobian_finder("aer_to_eci", np.reshape(satAERMesTF[c][:, j], (3, 1)),
                                                  func_params, delta)
 
             cov_eci = jacobian @ cov_aer @ jacobian.T
 
             state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
 
-            sat_state, cov_state = Filters.EKF_ECI(sat_state, cov_state, satECIMesTF[c][:, j],
+            sat_state, cov_state = Filters.ekf(sat_state, cov_state, satECIMesTF[c][:, j],
                                                    state_trans_matrix,
                                                    measure_matrix, cov_eci, proc_noise)
 

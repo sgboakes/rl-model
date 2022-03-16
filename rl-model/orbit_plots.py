@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from pysatellite import Filters, Transformations, Functions
+from pysatellite import Transformations
 import pysatellite.config as cfg
 
 
@@ -26,8 +26,8 @@ def generate_measurements():
             sat_eci[c][:, j] = (v @ cos(theta_arr[i])) + (np.cross(k_arr[i, :].T, v.T) * sin(theta_arr[i])) + (
                                k_arr[i, :].T * np.dot(k_arr[i, :].T, v) * (1 - cos(theta_arr[i])))
 
-            sat_aer[c][:, j:j + 1] = Transformations.ECItoAER(sat_eci[c][:, j], stepLength, j + 1, sensECEF,
-                                                              sensLLA[0], sensLLA[1])
+            sat_aer[c][:, j:j + 1] = Transformations.eci_to_aer(sat_eci[c][:, j], stepLength, j + 1, sensECEF,
+                                                                sensLLA[0], sensLLA[1])
 
             if not trans_earth:
                 if sat_aer[c][1, j] < 0:
@@ -55,8 +55,8 @@ def generate_measurements():
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
-            sat_eci_mes[c][:, j:j + 1] = Transformations.AERtoECI(sat_aer_mes[c][:, j], stepLength, j + 1, sensECEF,
-                                                                  sensLLA[0], sensLLA[1])
+            sat_eci_mes[c][:, j:j + 1] = Transformations.aer_to_eci(sat_aer_mes[c][:, j], stepLength, j + 1, sensECEF,
+                                                                    sensLLA[0], sensLLA[1])
 
     return sat_aer, sat_eci, sat_aer_mes, sat_eci_mes
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     sensAlt = np.float64(2390)
     sensLLA = np.array([[sensLat * pi / 180], [sensLon * pi / 180], [sensAlt]], dtype='float64')
     # sensLLA = np.array([[pi/2], [0], [1000]], dtype='float64')
-    sensECEF = Transformations.LLAtoECEF(sensLLA)
+    sensECEF = Transformations.lla_to_ecef(sensLLA)
     sensECEF.shape = (3, 1)
 
     # simLength = cfg.simLength
