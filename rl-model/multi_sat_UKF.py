@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from pysatellite import Transformations, Functions, Filters
 import pysatellite.config as cfg
 import pandas as pd
+from filterpy.kalman.UKF import UnscentedKalmanFilter as UKF
 
 import reverb
 from tf_agents.environments import py_environment
