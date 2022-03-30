@@ -1,3 +1,4 @@
 [build-system]
-requires = ["setuptools","wheel","pysatellite","numpy","matplotlib","tf-agents[reverb]","reverb","tensorflow","pandas"]
+requires = ["setuptools","wheel","pysatellite","numpy","matplotlib","tf-agents[reverb]","reverb","tensorflow","pandas",
+            "filterpy"]
 build-backend = "setuptools.build_meta"
