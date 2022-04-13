@@ -395,6 +395,7 @@ if __name__ == "__main__":
     # tr_posterior = {chr(i + 97): np.zeros((3, 3)) for i in range(num_sats)}
     # info_gain = [0.] * num_sats
 
+    # ~~~~ Environment validation
     env = SatEnv()
     utils.validate_py_environment(env, episodes=5)
 
