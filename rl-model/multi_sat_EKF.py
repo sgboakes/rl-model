@@ -31,6 +31,7 @@ from tf_agents.environments import tf_py_environment
 from tf_agents.networks import sequential
 from tf_agents.policies import py_tf_eager_policy
 from tf_agents.policies import random_tf_policy
+from tf_agents.policies import greedy_policy
 from tf_agents.replay_buffers import reverb_replay_buffer
 from tf_agents.replay_buffers import reverb_utils
 from tf_agents.specs import tensor_spec
@@ -156,7 +157,7 @@ class SatEnv(py_environment.PyEnvironment, ABC):
 
         for i in range(num_sats):
             c = chr(i + 97)
-            if abs(satAER[c][0, j] - self._sens_state[0]) < 0.5 and abs(satAER[c][1, j] - self._sens_state[1]) < 0.5:
+            if abs(satAER[c][0, j] - self._sens_state[0]) < 0.3 and abs(satAER[c][1, j] - self._sens_state[1]) < 0.3:
                 reward += 1
                 satAERMesT[c][:, j] = satAERMes[c][:, j]
                 satECIMesT[c][:, j] = satECIMes[c][:, j]
@@ -180,6 +181,13 @@ class SatEnv(py_environment.PyEnvironment, ABC):
         else:
             # print('here1')
             return ts.transition(distance, reward=reward, discount=1.0)
+
+    # Make Heuristic decision maker here and compare to RL policy at end of training?
+    # Maybe needs to go in environment class?
+    def heuristic(self, action):
+        reward = 1
+        self._current_episode += 1
+        return ts.transition(distance, reward=reward, discount=1.0)
 
 
 def compute_avg_return(environment, policy, num_episodes=10):
@@ -327,7 +335,7 @@ def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
         state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
 
         sat_state, cov_state = Filters.ekf(sat_state, cov_state, sat_eci_mes[:, j], state_trans_matrix,
-                                               measure_matrix, cov_eci, proc_noise)
+                                           measure_matrix, cov_eci, proc_noise)
 
     return np.trace(cov_state)
 
@@ -464,8 +472,7 @@ if __name__ == "__main__":
 
     eval_policy = agent.policy
     collect_policy = agent.collect_policy
-    random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(),
-                                                    train_env.action_spec())
+    random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(), train_env.action_spec())
 
     # @test {"skip": true}
     # See also the metrics module for standard implementations of different metrics.

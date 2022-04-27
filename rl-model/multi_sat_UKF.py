@@ -20,6 +20,7 @@ from pysatellite import Transformations, Functions, Filters
 import pysatellite.config as cfg
 import pandas as pd
 from filterpy.kalman.UKF import UnscentedKalmanFilter as UKF
+from filterpy.kalman.sigma_points import MerweScaledSigmaPoints
 
 import reverb
 from tf_agents.environments import py_environment
@@ -282,11 +283,14 @@ def generate_measurements():
 
 
 def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
+    points = MerweScaledSigmaPoints(6, alpha=.1, beta=2., kappa=-1)
+    kf = UKF(dim_x=6, dim_z=3, dt=stepLength, fx=Functions.kepler, hx=Functions.h_x, points=points)
 
-    sat_state = np.zeros((6, 1))
-    cov_state = np.float64(1e12) * np.identity(6)
+    kf.x = np.zeros((6, 1))
+    kf.P = np.float64(1e12) * np.identity(6)
 
-    sat_state[0:3] = np.reshape(satECIMes[c][:, 0], (3, 1))
+    kf.x[0:3] = np.reshape(satECI[c][:, 0], (3, 1))
+    kf.x = kf.x.flat
 
     # Process noise
     std_ang = np.float64(1e-5)
@@ -294,13 +298,13 @@ def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
     coef_b = np.float64(stepLength ** 2.0 * std_ang ** 2.0)
     coef_c = np.float64(0.5 * stepLength ** 3.0 * std_ang ** 2.0)
 
-    proc_noise = np.array([[coef_a, 0, 0, coef_c, 0, 0],
-                           [0, coef_a, 0, 0, coef_c, 0],
-                           [0, 0, coef_a, 0, 0, coef_c],
-                           [coef_c, 0, 0, coef_b, 0, 0],
-                           [0, coef_c, 0, 0, coef_b, 0],
-                           [0, 0, coef_c, 0, 0, coef_b]],
-                          dtype='float64')
+    kf.Q = np.array([[coef_a, 0, 0, coef_c, 0, 0],
+                     [0, coef_a, 0, 0, coef_c, 0],
+                     [0, 0, coef_a, 0, 0, coef_c],
+                     [coef_c, 0, 0, coef_b, 0, 0],
+                     [0, coef_c, 0, 0, coef_b, 0],
+                     [0, 0, coef_c, 0, 0, coef_b]],
+                    dtype='float64')
 
     ang_meas_dev, range_meas_dev = 1e-6, 20
 
@@ -309,9 +313,7 @@ def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
                         [0, 0, range_meas_dev ** 2]],
                        dtype='float64')
 
-    measure_matrix = np.append(np.identity(3), np.zeros((3, 3)), axis=1)
-
-    delta = 1e-6
+    delta = np.float64(1e-6)
     for j in range(sim_length):
 
         func_params = {
@@ -323,14 +325,14 @@ def filtering(c, sim_length, sat_aer_mes, sat_eci_mes):
 
         jacobian = Functions.jacobian_finder("aer_to_eci", np.reshape(sat_aer_mes[:, j], (3, 1)), func_params, delta)
 
-        cov_eci = jacobian @ cov_aer @ jacobian.T
+        kf.R = jacobian @ cov_aer @ jacobian.T
 
-        state_trans_matrix = Functions.jacobian_finder("kepler", sat_state, [], delta)
+        # import pdb; pdb.set_trace()
+        kf.predict()
+        if not np.any(np.isnan(sat_eci_mes[:, j])) and np.any(sat_eci_mes[:, j]):
+            kf.update(sat_eci_mes[:, j])
 
-        sat_state, cov_state = Filters.ekf(sat_state, cov_state, sat_eci_mes[:, j], state_trans_matrix,
-                                               measure_matrix, cov_eci, proc_noise)
-
-    return np.trace(cov_state)
+    return np.trace(kf.P)
 
 
 if __name__ == "__main__":
