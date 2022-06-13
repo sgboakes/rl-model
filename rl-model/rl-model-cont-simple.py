@@ -137,7 +137,7 @@ class SatEnv(py_environment.PyEnvironment, ABC):
         self._episode_duration += 1
 
         # Make sure episodes don't go on forever.
-        if action == self._state:
+        if abs(action - self._state) < 0.1:
             reward = 1
 
         self._state = (self._state + .1) % 1.
