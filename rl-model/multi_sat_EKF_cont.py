@@ -317,7 +317,7 @@ if __name__ == "__main__":
     # Hyper-parameters ~~~~~~~~~~~~
     # Use "num_iterations = 1e6" for better results (2 hrs)
     # 1e5 is just so this doesn't take too long (1 hr)
-    num_iterations = 200000  # @param {type:"integer"}
+    num_iterations = 100000  # @param {type:"integer"}
 
     initial_collect_steps = 10000  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
@@ -637,6 +637,7 @@ if __name__ == "__main__":
         if log_interval and step % log_interval == 0:
             print('step = {0}: loss = {1}'.format(step, loss_info.loss.numpy()))
 
+        # Ignore these metrics - run episode on policy and save covs that way? Maybe reuse comp_avg_return from DDQN
         if eval_interval and step % eval_interval == 0:
             metrics = get_eval_metrics()
             log_eval_metrics(step, metrics)
