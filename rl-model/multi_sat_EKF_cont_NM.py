@@ -155,9 +155,12 @@ class SatEnv(py_environment.PyEnvironment, ABC):
         for i in range(num_sats):
             c = chr(i + 97)
             if abs(satAER[c][0, j] - self._sens_state[0]) < 0.3 and abs(satAER[c][1, j] - self._sens_state[1]) < 0.3:
-                reward += 1
                 satAERMesT[c][:, j] = satAERMes[c][:, j]
                 satECIMesT[c][:, j] = satECIMes[c][:, j]
+                if j != 19 and satAER[c][1, j+1] < 0:
+                    reward += 10
+                else:
+                    reward += 1
             else:
                 satAERMesT[c][:, j] = np.reshape(([[0.], [0.], [0.]]), (3,))
                 satECIMesT[c][:, j] = np.reshape(([[0.], [0.], [0.]]), (3,))

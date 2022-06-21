@@ -15,7 +15,7 @@ def generate_measurements():
     # Make data structures
     sat_eci = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
     sat_aer = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
-
+    not_vis_count = 0
     for i in range(num_sats):
         c = chr(i + 97)
         for j in range(simLength):
@@ -34,7 +34,9 @@ def generate_measurements():
                     sat_aer[c][:, j:j + 1] = np.array([[np.nan], [np.nan], [np.nan]])
 
         if np.isnan(sat_aer[c]).all():
-            print('Satellite {s} is not observable'.format(s=c))
+            not_vis_count +=1
+
+    print("There are {i} non visible satellites of {s} satellites".format(i=not_vis_count, s=num_sats))
 
     # Add small deviations for measurements
     # Using calculated max measurement deviations for LT:
@@ -61,10 +63,19 @@ def generate_measurements():
     return sat_aer, sat_eci, sat_aer_mes, sat_eci_mes
 
 
+def generate_orbits():
+    sat_eci = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_aer = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_aer_mes = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+    sat_eci_mes = {chr(i + 97): np.zeros((3, simLength)) for i in range(num_sats)}
+
+    return sat_aer, sat_eci, sat_aer_mes, sat_eci_mes
+
+
 if __name__ == "__main__":
 
     plt.close('all')
-    np.random.seed(2)
+    np.random.seed(1)
     # ~~~~ Variables
 
     sin = np.sin
@@ -85,7 +96,7 @@ if __name__ == "__main__":
 
     mu = cfg.mu
 
-    trans_earth = True
+    trans_earth = False
 
     # ~~~~ Satellite Conversion
 
@@ -95,7 +106,7 @@ if __name__ == "__main__":
     # thetaArr: inclination angle for each sat rad
     # kArr: normal vector for each sat metres
 
-    num_sats = 25
+    num_sats = 100
     # global satAER, satECI, satAERMes, satECIMes
     satAER, satECI, satAERMes, satECIMes = generate_measurements()
 
@@ -105,5 +116,7 @@ if __name__ == "__main__":
     for i in range(num_sats):
         c = chr(i+97)
         ax.plot(satAER[c][0, :], np.rad2deg(satAERMes[c][1, :]))
+        ax.plot(satAER[c][0, 0], np.rad2deg(satAERMes[c][1, 0]), 'gx')
+        ax.plot(satAER[c][0, -1], np.rad2deg(satAERMes[c][1, -1]), 'rx')
 
     plt.show()
