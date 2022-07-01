@@ -158,6 +158,7 @@ class SatEnv(py_environment.PyEnvironment, ABC):
                 satAERMesT[c][:, j] = satAERMes[c][:, j]
                 satECIMesT[c][:, j] = satECIMes[c][:, j]
                 if j != 19 and satAER[c][1, j+1] < 0:
+                    # Cost of moving telescope?
                     reward += 10
                 else:
                     reward += 1

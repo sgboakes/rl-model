@@ -16,6 +16,14 @@ for i in range(num_sats):
         satVisCheck[c] = True
 
 steps = dfs[1]['Steps']
+stepLength = 30
+time_vec_s = []
+time_vec_m = []
+for step in steps:
+    time_vec_s.append(step*stepLength)
+    time_vec_m.append(step*stepLength / 60)
+
+
 cov_returns = {chr(i + 97): np.zeros((num_files, len(steps))) for i in range(num_sats)}
 cov_rnd_returns = {chr(i + 97): np.zeros((num_files, len(steps))) for i in range(num_sats)}
 
@@ -48,9 +56,9 @@ plt.figure()
 for i in range(num_sats):
     c = chr(i + 97)
     if satVisCheck[c]:
-        plt.plot(steps, cov_mean[c])
-        plt.fill_between(steps, cov_mean[c]-cov_std[c], cov_mean[c]+cov_std[c], alpha=.1)
-plt.xlabel('Step Number')
+        plt.plot(time_vec_s, cov_mean[c])
+        plt.fill_between(time_vec_s, cov_mean[c]-cov_std[c], cov_mean[c]+cov_std[c], alpha=.1)
+plt.xlabel('Time (s)')
 plt.ylabel('$\ln(tr(P))$, Agent Policy')
 # plt.yscale('log')
 plt.show()
@@ -59,9 +67,9 @@ plt.figure()
 for i in range(num_sats):
     c = chr(i + 97)
     if satVisCheck[c]:
-        plt.plot(steps, cov_rnd_mean[c])
-        plt.fill_between(steps, cov_rnd_mean[c]-cov_rnd_std[c], cov_rnd_mean[c]+cov_rnd_std[c], alpha=.1)
-plt.xlabel('Step Number')
+        plt.plot(time_vec_s, cov_rnd_mean[c])
+        plt.fill_between(time_vec_s, cov_rnd_mean[c]-cov_rnd_std[c], cov_rnd_mean[c]+cov_rnd_std[c], alpha=.1)
+plt.xlabel('Time (s)')
 plt.ylabel('$\ln(tr(P))$, Random Policy')
 # plt.yscale('log')
 plt.show()
